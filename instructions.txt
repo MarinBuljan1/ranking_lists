@@ -1,0 +1,8 @@
+To deploy live:
+run local server with "watch.bat"
+ensure service worker in index.html is uncommented out
+run ngrok with "ngrok start my-static-domain"
+connect to "https://anchovy-relaxing-gnat.ngrok-free.app/" by opening B to Z app
+
+To run test:
+run "cargo test"

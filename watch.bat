@@ -35,6 +35,7 @@ if exist service-worker.js (
 
 call :SyncDir static "%DOCS_DIR%\static"
 call :SyncDir icons "%DOCS_DIR%\icons"
+call :SyncDir assets "%DOCS_DIR%\assets"
 
 echo Docs output ready at "%DOCS_DIR%".
 goto :END

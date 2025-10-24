@@ -1,3 +1,5 @@
+pub mod data;
+
 use wasm_bindgen::prelude::wasm_bindgen;
 use yew::prelude::*;
 

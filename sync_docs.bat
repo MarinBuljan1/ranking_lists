@@ -9,6 +9,8 @@ if not exist "%DOCS_DIR%" (
     mkdir "%DOCS_DIR%"
 )
 
+call :GenerateIndex
+
 call :CopyFile index.html
 call :CopyFile manifest.json
 if exist service-worker.js (
@@ -24,6 +26,20 @@ if exist pkg (
 
 popd
 endlocal
+exit /b 0
+
+:GenerateIndex
+set "LISTS_DIR=assets\lists"
+if not exist "%LISTS_DIR%" (
+    echo Skipping index generation; "%LISTS_DIR%" not found.
+    exit /b 0
+)
+
+powershell -NoLogo -NoProfile -Command ^
+    "$files = Get-ChildItem -Path '%LISTS_DIR%' -Filter '*.json' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty BaseName | Sort-Object; $array = @($files); $json = ConvertTo-Json -InputObject $array -Compress; Set-Content -Path 'assets/index.json' -Value $json -Encoding UTF8"
+if errorlevel 1 (
+    echo Failed to generate assets index.
+)
 exit /b 0
 
 :CopyFile

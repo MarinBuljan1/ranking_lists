@@ -1,5 +1,6 @@
 use gloo_net::http::Request;
 use std::collections::HashSet;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListInfo {
@@ -33,6 +34,16 @@ impl DataError {
 
     fn parse<E: std::fmt::Display>(err: E) -> Self {
         Self::Parse(err.to_string())
+    }
+}
+
+impl fmt::Display for DataError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DataError::NotFound(id) => write!(f, "List '{}' not found.", id),
+            DataError::Network(message) => write!(f, "Network error: {}", message),
+            DataError::Parse(message) => write!(f, "Invalid data: {}", message),
+        }
     }
 }
 

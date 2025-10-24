@@ -1,8 +1,13 @@
 pub mod data;
+pub mod ranking;
 pub mod storage;
 
 use data::{fetch_available_lists, load_list, ListInfo, LoadedList};
-use storage::{load_state as load_storage_state, save_state as persist_state};
+use ranking::{BradleyTerry, DEFAULT_K_FACTOR};
+use storage::{
+    load_ranking as load_ranking_state, load_state as load_storage_state,
+    save_state as persist_state,
+};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -25,6 +30,7 @@ fn app() -> Html {
 
     let items_status = use_state(|| FetchStatus::Idle);
     let loaded_list = use_state(|| None::<LoadedList>);
+    let ranking_state = use_state(|| None::<BradleyTerry>);
 
     {
         let list_status = list_status.clone();
@@ -73,6 +79,7 @@ fn app() -> Html {
         let selected_list = selected_list.clone();
         let items_status = items_status.clone();
         let loaded_list = loaded_list.clone();
+        let ranking_state = ranking_state.clone();
 
         use_effect_with_deps(
             move |selected: &Option<String>| {
@@ -89,17 +96,22 @@ fn app() -> Html {
                             match load_list(&id).await {
                                 Ok(list) => {
                                     loaded_list.set(Some(list));
+                                    let ranking =
+                                        load_ranking_state(&id, DEFAULT_K_FACTOR);
+                                    ranking_state.set(Some(ranking));
                                     items_status.set(FetchStatus::Idle);
                                 }
                                 Err(err) => {
                                     items_status.set(FetchStatus::Error(err.to_string()));
                                     loaded_list.set(None);
+                                    ranking_state.set(None);
                                 }
                             }
                         });
                     }
                     None => {
                         loaded_list.set(None);
+                        ranking_state.set(None);
                         items_status.set(FetchStatus::Idle);
                     }
                 };
@@ -138,7 +150,7 @@ fn app() -> Html {
                     { render_lists_panel(&list_status, &lists, &selected_list) }
                 </section>
                 <section class="list-details">
-                    { render_list_details(&items_status, &loaded_list) }
+                    { render_list_details(&items_status, &loaded_list, &ranking_state) }
                 </section>
             </main>
         </div>
@@ -209,6 +221,7 @@ fn render_list_button(
 fn render_list_details(
     status: &UseStateHandle<FetchStatus>,
     loaded: &UseStateHandle<Option<LoadedList>>,
+    ranking_state: &UseStateHandle<Option<BradleyTerry>>,
 ) -> Html {
     match &**status {
         FetchStatus::Loading => html! { <p>{ "Loading list…" }</p> },
@@ -218,11 +231,23 @@ fn render_list_details(
                 return html! { <p>{ "Select a list to begin." }</p> };
             };
 
+            let ranking = (&**ranking_state).as_ref();
+
             html! {
                 <div class="list-preview">
                     <h2>{ format!("Items in {}", list.info.label) }</h2>
                     <ul>
-                        { for list.items.iter().map(|item| html!{ <li key={item.id.clone()}>{ &item.label }</li> }) }
+                        { for list.items.iter().map(|item| {
+                            let rating = ranking
+                                .map(|system| system.rating(&item.id))
+                                .unwrap_or_default();
+                            html! {
+                                <li key={item.id.clone()}>
+                                    <span class="item-label">{ &item.label }</span>
+                                    <span class="item-rating">{ format!("{rating:.2}") }</span>
+                                </li>
+                            }
+                        }) }
                     </ul>
                 </div>
             }

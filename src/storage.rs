@@ -1,3 +1,4 @@
+use crate::ranking::BradleyTerry;
 use gloo_storage::{LocalStorage, Storage};
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -72,5 +73,20 @@ pub fn load_list_state(list_id: &str) -> StoredListState {
 pub fn save_list_state(list_id: &str, list_state: StoredListState) {
     let mut state = load_state();
     state.lists.insert(list_id.to_string(), list_state);
+    save_state(&state);
+}
+
+pub fn load_ranking(list_id: &str, k_factor: f64) -> BradleyTerry {
+    let stored = load_list_state(list_id);
+    BradleyTerry::from_ratings(stored.ratings, k_factor)
+}
+
+pub fn save_ranking(list_id: &str, ranking: &BradleyTerry) {
+    let mut state = load_state();
+    let entry = state
+        .lists
+        .entry(list_id.to_string())
+        .or_insert_with(StoredListState::default);
+    entry.ratings = ranking.ratings().clone();
     save_state(&state);
 }

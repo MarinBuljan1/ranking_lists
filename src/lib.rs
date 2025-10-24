@@ -1,6 +1,8 @@
 pub mod data;
+pub mod storage;
 
 use data::{fetch_available_lists, load_list, ListInfo, LoadedList};
+use storage::{load_state as load_storage_state, save_state as persist_state};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -16,7 +18,10 @@ enum FetchStatus {
 fn app() -> Html {
     let list_status = use_state(|| FetchStatus::Loading);
     let lists = use_state(|| None::<Vec<ListInfo>>);
-    let selected_list = use_state(|| None::<String>);
+    let persisted_state = use_state(load_storage_state);
+
+    let initial_selection = (*persisted_state).selected_list.clone();
+    let selected_list = use_state(move || initial_selection);
 
     let items_status = use_state(|| FetchStatus::Idle);
     let loaded_list = use_state(|| None::<LoadedList>);
@@ -25,6 +30,7 @@ fn app() -> Html {
         let list_status = list_status.clone();
         let lists = lists.clone();
         let selected_list = selected_list.clone();
+        let persisted_state = persisted_state.clone();
 
         use_effect_with_deps(
             move |_| {
@@ -34,11 +40,15 @@ fn app() -> Html {
                 let lists = lists.clone();
                 let selected_list = selected_list.clone();
                 let previously_selected = (*selected_list).clone();
+                let persisted_state = persisted_state.clone();
 
                 spawn_local(async move {
                     match fetch_available_lists().await {
                         Ok(fetched) => {
-                            let default_selection = resolve_selection(&fetched, previously_selected);
+                            let previous = previously_selected
+                                .or_else(|| persisted_state.selected_list.clone());
+                            let default_selection =
+                                resolve_selection(&fetched, previous);
                             lists.set(Some(fetched));
                             if let Some(selection) = default_selection {
                                 selected_list.set(Some(selection));
@@ -94,6 +104,24 @@ fn app() -> Html {
                     }
                 };
 
+                || ()
+            },
+            (*selected_list).clone(),
+        );
+    }
+
+    {
+        let selected_list = selected_list.clone();
+        let persisted_state = persisted_state.clone();
+
+        use_effect_with_deps(
+            move |current: &Option<String>| {
+                let mut next_state = (*persisted_state).clone();
+                if next_state.selected_list != *current {
+                    next_state.selected_list = current.clone();
+                    persist_state(&next_state);
+                    persisted_state.set(next_state);
+                }
                 || ()
             },
             (*selected_list).clone(),

@@ -1,4 +1,6 @@
 const MIN_ABILITY: f64 = 1e-6;
+const DISPLAY_BASE: f64 = 1000.0;
+const DISPLAY_SCALE: f64 = 100.0;
 
 #[derive(Debug, Clone)]
 pub struct BradleyTerry {
@@ -101,6 +103,18 @@ impl BradleyTerry {
             .copied()
             .unwrap_or(1.0)
             .ln()
+    }
+
+    pub fn display_rating(&self, index: usize) -> f64 {
+        let ability = self
+            .abilities
+            .get(index)
+            .copied()
+            .unwrap_or(1.0)
+            .max(MIN_ABILITY);
+        let count = self.abilities.len().max(1) as f64;
+        let adjusted = ability * count;
+        (DISPLAY_BASE + DISPLAY_SCALE * adjusted.ln()).max(0.0)
     }
 
     pub fn to_vec(&self) -> Vec<f64> {

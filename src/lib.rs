@@ -422,10 +422,13 @@ fn render_list_details(
                 .iter()
                 .enumerate()
                 .map(|(index, item)| {
-                    let score = ranking
+                    let log_score = ranking
                         .map(|system| system.log_score(index))
                         .unwrap_or_default();
-                    (index, item, score)
+                    let rating = ranking
+                        .map(|system| system.display_rating(index))
+                        .unwrap_or(1500.0);
+                    (index, item, log_score, rating)
                 })
                 .collect();
 
@@ -480,11 +483,11 @@ fn render_list_details(
                             <p>{ format!("Matches recorded: {total_matches}") }</p>
                         </div>
                         <ul>
-                            { for items_with_scores.into_iter().map(|(_index, item, score)| {
+                            { for items_with_scores.into_iter().map(|(_index, item, _log_score, rating)| {
                                 html! {
                                     <li key={item.id.clone()}>
                                         <span class="item-label">{ &item.label }</span>
-                                        <span class="item-rating">{ format!("{score:.2}") }</span>
+                                        <span class="item-rating">{ format!("{rating:.0}") }</span>
                                     </li>
                                 }
                             }) }

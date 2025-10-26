@@ -264,10 +264,56 @@ fn app() -> Html {
         })
     };
 
+    let on_reset = {
+        let selected_list = selected_list.clone();
+        let persisted_state_handle = persisted_state.clone();
+        let list_state_handle = list_state.clone();
+        let ranking_state = ranking_state.clone();
+        let current_match = current_match.clone();
+        let loaded_list = loaded_list.clone();
+        let items_status = items_status.clone();
+
+        Callback::from(move |_| {
+            let Some(list_id) = (*selected_list).clone() else {
+                return;
+            };
+
+            let Some(list) = (&*loaded_list).as_ref() else {
+                return;
+            };
+
+            let item_ids: Vec<String> = list
+                .items
+                .iter()
+                .map(|item| item.id.clone())
+                .collect();
+
+            let mut new_state = StoredListState::new(&item_ids);
+
+            let mut ranking = BradleyTerry::from_abilities(new_state.abilities.clone());
+            ranking.ensure_len(item_ids.len());
+            ranking.run_iterations(&new_state.win_matrix, 4);
+            new_state.abilities = ranking.to_vec();
+
+            list_state_handle.set(Some(new_state.clone()));
+            ranking_state.set(Some(ranking));
+
+            let mut updated_app_state = (*persisted_state_handle).clone();
+            upsert_list_state(&mut updated_app_state, &list_id, new_state);
+            persist_state(&updated_app_state);
+            persisted_state_handle.set(updated_app_state);
+
+            items_status.set(FetchStatus::Idle);
+            let next_match = random_matchup(item_ids.len(), None);
+            current_match.set(next_match);
+        })
+    };
+
     html! {
         <div class="app-container">
             <header class="top-bar">
                 <h1>{ "Ranking Lists" }</h1>
+                <button class="reset-button" onclick={on_reset}>{ "Reset Rankings" }</button>
             </header>
             <main class="content">
                 <section class="lists-panel">

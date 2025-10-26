@@ -1,80 +1,132 @@
-use std::collections::HashMap;
-
-const DEFAULT_RATING: f64 = 0.0;
-pub const DEFAULT_K_FACTOR: f64 = 0.8;
-const MAX_STEP: f64 = 5.0;
-const MIN_RATING: f64 = -10.0;
-const MAX_RATING: f64 = 10.0;
+const MIN_ABILITY: f64 = 1e-6;
 
 #[derive(Debug, Clone)]
 pub struct BradleyTerry {
-    ratings: HashMap<String, f64>,
-    k_factor: f64,
-}
-
-impl Default for BradleyTerry {
-    fn default() -> Self {
-        Self::new(DEFAULT_K_FACTOR)
-    }
+    abilities: Vec<f64>,
 }
 
 impl BradleyTerry {
-    pub fn new(k_factor: f64) -> Self {
+    pub fn new(count: usize) -> Self {
         Self {
-            ratings: HashMap::new(),
-            k_factor,
+            abilities: vec![1.0; count],
         }
     }
 
-    pub fn from_ratings(ratings: HashMap<String, f64>, k_factor: f64) -> Self {
-        Self { ratings, k_factor }
+    pub fn from_abilities(abilities: Vec<f64>) -> Self {
+        if abilities.is_empty() {
+            Self::new(0)
+        } else {
+            Self {
+                abilities: abilities
+                    .into_iter()
+                    .map(|value| value.max(MIN_ABILITY))
+                    .collect(),
+            }
+        }
     }
 
-    pub fn ratings(&self) -> &HashMap<String, f64> {
-        &self.ratings
+    pub fn abilities(&self) -> &[f64] {
+        &self.abilities
     }
 
-    pub fn rating(&self, id: &str) -> f64 {
-        self.ratings.get(id).copied().unwrap_or(DEFAULT_RATING)
+    pub fn abilities_mut(&mut self) -> &mut [f64] {
+        &mut self.abilities
     }
 
-    pub fn expected_score(&self, a: &str, b: &str) -> f64 {
-        let rating_a = self.rating(a);
-        let rating_b = self.rating(b);
-        let diff = (rating_a - rating_b).clamp(-MAX_STEP, MAX_STEP);
-        1.0 / (1.0 + (-diff).exp())
+    pub fn ensure_len(&mut self, len: usize) {
+        if self.abilities.len() < len {
+            self.abilities
+                .resize(len, if len > 0 { 1.0 / len as f64 } else { 1.0 });
+        } else if self.abilities.len() > len {
+            self.abilities.truncate(len);
+        }
+        if !self.abilities.is_empty() {
+            self.normalize();
+        }
     }
 
-    pub fn update(&mut self, winner: &str, loser: &str) {
-        if winner == loser {
+    pub fn expected_score(&self, i: usize, j: usize) -> f64 {
+        if self.abilities.is_empty() {
+            return 0.5;
+        }
+        let ai = self.abilities[i].max(MIN_ABILITY);
+        let aj = self.abilities[j].max(MIN_ABILITY);
+        ai / (ai + aj)
+    }
+
+    pub fn run_iterations(&mut self, wins: &[Vec<u32>], iterations: usize) {
+        let n = wins.len();
+        if n == 0 || iterations == 0 {
             return;
         }
+        self.ensure_len(n);
 
-        let expected_winner = self.expected_score(winner, loser);
-        let expected_loser = 1.0 - expected_winner;
+        let mut abilities = self.abilities.clone();
 
-        let winner_delta = self.k_factor * (1.0 - expected_winner);
-        let loser_delta = self.k_factor * (0.0 - expected_loser);
+        for _ in 0..iterations {
+            let mut updated = abilities.clone();
+            for i in 0..n {
+                let wins_i: f64 = wins[i].iter().map(|&w| w as f64).sum();
+                if wins_i <= f64::EPSILON {
+                    continue;
+                }
 
-        self.apply_delta(winner, winner_delta);
-        self.apply_delta(loser, loser_delta);
+                let mut denom = 0.0;
+                for j in 0..n {
+                    if i == j {
+                        continue;
+                    }
+                    let total = wins[i][j] + wins[j][i];
+                    if total == 0 {
+                        continue;
+                    }
+                    denom += (total as f64) / (abilities[i] + abilities[j] + MIN_ABILITY);
+                }
+
+                if denom > 0.0 {
+                    updated[i] = (wins_i / denom).max(MIN_ABILITY);
+                }
+            }
+
+            normalize(&mut updated);
+            abilities = updated;
+        }
+
+        self.abilities = abilities;
     }
 
-    pub fn leaderboard(&self) -> Vec<(String, f64)> {
-        let mut entries: Vec<_> = self
-            .ratings
-            .iter()
-            .map(|(id, rating)| (id.clone(), *rating))
-            .collect();
-
-        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        entries
+    pub fn log_score(&self, index: usize) -> f64 {
+        self.abilities
+            .get(index)
+            .copied()
+            .unwrap_or(1.0)
+            .ln()
     }
 
-    fn apply_delta(&mut self, id: &str, delta: f64) {
-        let current = self.rating(id);
-        let updated = (current + delta).clamp(MIN_RATING, MAX_RATING);
-        self.ratings.insert(id.to_string(), updated);
+    pub fn to_vec(&self) -> Vec<f64> {
+        self.abilities.clone()
+    }
+
+    fn normalize(&mut self) {
+        normalize(&mut self.abilities);
+    }
+}
+
+fn normalize(values: &mut [f64]) {
+    let sum: f64 = values.iter().map(|v| v.max(MIN_ABILITY)).sum();
+    if sum <= f64::EPSILON {
+        let len = values.len();
+        if len == 0 {
+            return;
+        }
+        let uniform = 1.0 / len as f64;
+        for value in values.iter_mut() {
+            *value = uniform;
+        }
+    } else {
+        for value in values.iter_mut() {
+            *value = value.max(MIN_ABILITY) / sum;
+        }
     }
 }
 
@@ -83,41 +135,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expected_score_balanced() {
-        let system = BradleyTerry::default();
-        let expected = system.expected_score("apple", "banana");
-        assert!((expected - 0.5).abs() < 1e-9);
+    fn normalization_keeps_sum_one() {
+        let mut system = BradleyTerry::new(3);
+        system.run_iterations(&vec![vec![0, 5, 0], vec![0, 0, 0], vec![0, 0, 0]], 5);
+        let sum: f64 = system.abilities().iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6);
     }
 
     #[test]
-    fn ratings_update_direction() {
-        let mut system = BradleyTerry::default();
-        system.update("apple", "banana");
-        assert!(system.rating("apple") > 0.0);
-        assert!(system.rating("banana") < 0.0);
-    }
+    fn abilities_increase_for_winner() {
+        let wins = vec![
+            vec![0, 3, 0],
+            vec![0, 0, 0],
+            vec![0, 0, 0],
+        ];
 
-    #[test]
-    fn leaderboard_sorted() {
-        let mut system = BradleyTerry::default();
-        system.update("apple", "banana");
-        system.update("apple", "banana");
-        system.update("banana", "cherry");
+        let mut system = BradleyTerry::new(3);
+        system.run_iterations(&wins, 10);
 
-        let leaderboard = system.leaderboard();
-        assert!(leaderboard
-            .windows(2)
-            .all(|pair| pair[0].1 >= pair[1].1));
-        assert!(leaderboard.iter().any(|(id, _)| id == "apple"));
-    }
-
-    #[test]
-    fn repeated_updates_respect_clamp() {
-        let mut system = BradleyTerry::default();
-        for _ in 0..1000 {
-            system.update("apple", "banana");
-        }
-        assert!(system.rating("apple") <= MAX_RATING);
-        assert!(system.rating("banana") >= MIN_RATING);
+        assert!(system.abilities()[0] > system.abilities()[1]);
+        assert!(system.abilities()[0] > system.abilities()[2]);
     }
 }

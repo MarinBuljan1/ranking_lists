@@ -1,4 +1,3 @@
-use crate::ranking::BradleyTerry;
 use gloo_storage::{LocalStorage, Storage};
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -23,27 +22,38 @@ impl Default for StoredAppState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
 pub struct StoredListState {
-    pub ratings: HashMap<String, f64>,
-    pub match_history: Vec<MatchRecord>,
+    pub item_ids: Vec<String>,
+    pub win_matrix: Vec<Vec<u32>>,
+    pub abilities: Vec<f64>,
 }
 
-impl Default for StoredListState {
-    fn default() -> Self {
+impl StoredListState {
+    pub fn new(item_ids: &[String]) -> Self {
+        let count = item_ids.len();
         Self {
-            ratings: HashMap::new(),
-            match_history: Vec::new(),
+            item_ids: item_ids.to_vec(),
+            win_matrix: vec![vec![0; count]; count],
+            abilities: vec![1.0; count],
         }
     }
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MatchRecord {
-    pub winner_id: String,
-    pub loser_id: String,
-    #[serde(default)]
-    pub timestamp_ms: Option<u64>,
+    pub fn matches_items(&self, item_ids: &[String]) -> bool {
+        self.item_ids == item_ids
+            && self.win_matrix.len() == item_ids.len()
+            && self
+                .win_matrix
+                .iter()
+                .all(|row| row.len() == item_ids.len())
+            && self.abilities.len() == item_ids.len()
+    }
+
+    pub fn total_matches(&self) -> u32 {
+        self.win_matrix
+            .iter()
+            .map(|row| row.iter().sum::<u32>())
+            .sum()
+    }
 }
 
 pub fn load_state() -> StoredAppState {
@@ -62,35 +72,63 @@ pub fn save_state(state: &StoredAppState) {
     }
 }
 
-pub fn load_list_state(list_id: &str) -> StoredListState {
-    load_state()
-        .lists
-        .get(list_id)
-        .cloned()
-        .unwrap_or_default()
-}
-
-pub fn load_ranking(list_id: &str, k_factor: f64) -> BradleyTerry {
-    let stored = load_list_state(list_id);
-    BradleyTerry::from_ratings(stored.ratings, k_factor)
-}
-
-pub fn load_match_history(list_id: &str) -> Vec<MatchRecord> {
-    load_list_state(list_id).match_history
-}
-
-pub fn record_match_result(
+pub fn load_list_state<'a>(
+    app_state: &'a StoredAppState,
     list_id: &str,
-    record: MatchRecord,
-    ranking: &BradleyTerry,
-) -> StoredAppState {
-    let mut state = load_state();
-    let entry = state
-        .lists
-        .entry(list_id.to_string())
-        .or_insert_with(StoredListState::default);
-    entry.ratings = ranking.ratings().clone();
-    entry.match_history.push(record);
-    save_state(&state);
-    state
+) -> Option<&'a StoredListState> {
+    app_state.lists.get(list_id)
+}
+
+pub fn upsert_list_state(
+    app_state: &mut StoredAppState,
+    list_id: &str,
+    state: StoredListState,
+) {
+    app_state.lists.insert(list_id.to_string(), state);
+}
+
+pub fn align_list_state(
+    existing: Option<StoredListState>,
+    item_ids: &[String],
+) -> StoredListState {
+    match existing {
+        Some(state) if state.matches_items(item_ids) => state,
+        Some(state) => reorder_state(state, item_ids),
+        None => StoredListState::new(item_ids),
+    }
+}
+
+fn reorder_state(state: StoredListState, item_ids: &[String]) -> StoredListState {
+    let n = item_ids.len();
+    if n == 0 {
+        return StoredListState::new(item_ids);
+    }
+
+    let mut mapping = HashMap::new();
+    for (idx, id) in state.item_ids.iter().enumerate() {
+        mapping.insert(id.clone(), idx);
+    }
+
+    let mut new_state = StoredListState::new(item_ids);
+
+    for (new_i, id_i) in item_ids.iter().enumerate() {
+        if let Some(&old_i) = mapping.get(id_i) {
+            if old_i < state.abilities.len() {
+                new_state.abilities[new_i] = state.abilities[old_i].max(1e-6);
+            }
+            for (new_j, id_j) in item_ids.iter().enumerate() {
+                if let Some(&old_j) = mapping.get(id_j) {
+                    let value = state
+                        .win_matrix
+                        .get(old_i)
+                        .and_then(|row| row.get(old_j))
+                        .copied()
+                        .unwrap_or(0);
+                    new_state.win_matrix[new_i][new_j] = value;
+                }
+            }
+        }
+    }
+
+    new_state
 }

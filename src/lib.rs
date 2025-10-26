@@ -4,13 +4,11 @@ pub mod ranking;
 pub mod storage;
 
 use data::{fetch_available_lists, load_list, ListInfo, LoadedList};
-use js_sys::Date;
 use matchflow::{random_matchup, Matchup};
-use ranking::{BradleyTerry, DEFAULT_K_FACTOR};
+use ranking::BradleyTerry;
 use storage::{
-    load_match_history, load_ranking as load_ranking_state,
-    load_state as load_storage_state, record_match_result,
-    save_state as persist_state, MatchRecord,
+    align_list_state, load_list_state, load_state as load_storage_state,
+    save_state as persist_state, upsert_list_state, StoredListState,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
@@ -42,7 +40,7 @@ fn app() -> Html {
     let loaded_list = use_state(|| None::<LoadedList>);
     let ranking_state = use_state(|| None::<BradleyTerry>);
     let current_match = use_state(|| None::<Matchup>);
-    let match_history = use_state(Vec::<MatchRecord>::new);
+    let list_state = use_state(|| None::<StoredListState>);
 
     {
         let list_status = list_status.clone();
@@ -63,8 +61,8 @@ fn app() -> Html {
                 spawn_local(async move {
                     match fetch_available_lists().await {
                         Ok(fetched) => {
-                            let previous = previously_selected
-                                .or_else(|| persisted_state.selected_list.clone());
+                            let previous =
+                                previously_selected.or_else(|| persisted_state.selected_list.clone());
                             let default_selection =
                                 resolve_selection(&fetched, previous);
                             lists.set(Some(fetched));
@@ -93,7 +91,8 @@ fn app() -> Html {
         let loaded_list = loaded_list.clone();
         let ranking_state = ranking_state.clone();
         let current_match = current_match.clone();
-        let match_history = match_history.clone();
+        let list_state_handle = list_state.clone();
+        let persisted_state_handle = persisted_state.clone();
 
         use_effect_with_deps(
             move |selected: &Option<String>| {
@@ -101,15 +100,18 @@ fn app() -> Html {
                     Some(id) => {
                         items_status.set(FetchStatus::Loading);
                         loaded_list.set(None);
+                        ranking_state.set(None);
                         current_match.set(None);
-                        match_history.set(Vec::new());
+                        list_state_handle.set(None);
 
                         let id = id.clone();
                         let items_status = items_status.clone();
                         let loaded_list = loaded_list.clone();
                         let ranking_state = ranking_state.clone();
                         let current_match = current_match.clone();
-                        let match_history = match_history.clone();
+                        let list_state_handle = list_state_handle.clone();
+                        let persisted_state_handle = persisted_state_handle.clone();
+                        let persisted_snapshot = (*persisted_state_handle).clone();
 
                         spawn_local(async move {
                             match load_list(&id).await {
@@ -119,15 +121,33 @@ fn app() -> Html {
                                         .iter()
                                         .map(|item| item.id.clone())
                                         .collect();
-                                    let ranking =
-                                        load_ranking_state(&id, DEFAULT_K_FACTOR);
-                                    let history = load_match_history(&id);
-                                    let next_match =
-                                        random_matchup(&item_ids, None);
 
-                                    match_history.set(history);
-                                    current_match.set(next_match);
+                                    let existing =
+                                        load_list_state(&persisted_snapshot, &id).cloned();
+                                    let mut stored_state =
+                                        align_list_state(existing, &item_ids);
+
+                                    let mut ranking =
+                                        BradleyTerry::from_abilities(stored_state.abilities.clone());
+                                    ranking.ensure_len(item_ids.len());
+                                    ranking.run_iterations(&stored_state.win_matrix, 8);
+                                    stored_state.abilities = ranking.to_vec();
+
+                                    let mut updated_app_state = persisted_snapshot.clone();
+                                    upsert_list_state(
+                                        &mut updated_app_state,
+                                        &id,
+                                        stored_state.clone(),
+                                    );
+                                    persist_state(&updated_app_state);
+                                    persisted_state_handle.set(updated_app_state);
+
+                                    let next_match =
+                                        random_matchup(item_ids.len(), None);
+
+                                    list_state_handle.set(Some(stored_state));
                                     ranking_state.set(Some(ranking));
+                                    current_match.set(next_match);
                                     loaded_list.set(Some(list));
                                     items_status.set(FetchStatus::Idle);
                                 }
@@ -136,7 +156,7 @@ fn app() -> Html {
                                     loaded_list.set(None);
                                     ranking_state.set(None);
                                     current_match.set(None);
-                                    match_history.set(Vec::new());
+                                    list_state_handle.set(None);
                                 }
                             }
                         });
@@ -145,7 +165,7 @@ fn app() -> Html {
                         loaded_list.set(None);
                         ranking_state.set(None);
                         current_match.set(None);
-                        match_history.set(Vec::new());
+                        list_state_handle.set(None);
                         items_status.set(FetchStatus::Idle);
                     }
                 };
@@ -178,16 +198,16 @@ fn app() -> Html {
         let ranking_state = ranking_state.clone();
         let current_match = current_match.clone();
         let loaded_list = loaded_list.clone();
-        let match_history = match_history.clone();
+        let list_state_handle = list_state.clone();
         let selected_list = selected_list.clone();
-        let persisted_state = persisted_state.clone();
+        let persisted_state_handle = persisted_state.clone();
 
         Callback::from(move |side: WinnerSide| {
             let Some(list_id) = (*selected_list).clone() else {
                 return;
             };
 
-            let Some(current) = (*current_match).clone() else {
+            let Some(prev_match) = (*current_match).clone() else {
                 return;
             };
 
@@ -199,42 +219,47 @@ fn app() -> Html {
                 return;
             };
 
-            let (winner_id, loser_id) = match side {
-                WinnerSide::Left => (
-                    current.left_id.clone(),
-                    current.right_id.clone(),
-                ),
-                WinnerSide::Right => (
-                    current.right_id.clone(),
-                    current.left_id.clone(),
-                ),
+            let Some(mut stored_state) = (*list_state_handle).clone() else {
+                return;
             };
 
-            ranking.update(&winner_id, &loser_id);
+            let winner_index;
+            let loser_index;
 
-            let timestamp = Date::now() as u64;
-            let record = MatchRecord {
-                winner_id: winner_id.clone(),
-                loser_id: loser_id.clone(),
-                timestamp_ms: Some(timestamp),
-            };
+            match side {
+                WinnerSide::Left => {
+                    winner_index = prev_match.left_index;
+                    loser_index = prev_match.right_index;
+                }
+                WinnerSide::Right => {
+                    winner_index = prev_match.right_index;
+                    loser_index = prev_match.left_index;
+                }
+            }
 
-            let updated_state =
-                record_match_result(&list_id, record.clone(), &ranking);
-            persisted_state.set(updated_state);
+            if winner_index >= stored_state.win_matrix.len()
+                || loser_index >= stored_state.win_matrix.len()
+            {
+                return;
+            }
 
-            let mut history = (*match_history).clone();
-            history.push(record);
-            match_history.set(history);
+            stored_state.win_matrix[winner_index][loser_index] =
+                stored_state.win_matrix[winner_index][loser_index].saturating_add(1);
 
+            ranking.ensure_len(stored_state.win_matrix.len());
+            ranking.run_iterations(&stored_state.win_matrix, 6);
+            stored_state.abilities = ranking.to_vec();
+
+            list_state_handle.set(Some(stored_state.clone()));
             ranking_state.set(Some(ranking.clone()));
 
-            let item_ids: Vec<String> = list
-                .items
-                .iter()
-                .map(|item| item.id.clone())
-                .collect();
-            let next_match = random_matchup(&item_ids, Some(&current));
+            let mut updated_app_state = (*persisted_state_handle).clone();
+            upsert_list_state(&mut updated_app_state, &list_id, stored_state);
+            persist_state(&updated_app_state);
+            persisted_state_handle.set(updated_app_state);
+
+            let next_match =
+                random_matchup(list.items.len(), Some(&prev_match));
             current_match.set(next_match);
         })
     };
@@ -253,8 +278,8 @@ fn app() -> Html {
                         &items_status,
                         &loaded_list,
                         &ranking_state,
+                        &list_state,
                         &current_match,
-                        &match_history,
                         &on_match_result
                     ) }
                 </section>
@@ -328,8 +353,8 @@ fn render_list_details(
     status: &UseStateHandle<FetchStatus>,
     loaded: &UseStateHandle<Option<LoadedList>>,
     ranking_state: &UseStateHandle<Option<BradleyTerry>>,
+    list_state: &UseStateHandle<Option<StoredListState>>,
     current_match: &UseStateHandle<Option<Matchup>>,
-    match_history: &UseStateHandle<Vec<MatchRecord>>,
     on_select_winner: &Callback<WinnerSide>,
 ) -> Html {
     match &**status {
@@ -340,65 +365,62 @@ fn render_list_details(
                 return html! { <p>{ "Select a list to begin." }</p> };
             };
 
+            let Some(state) = (&**list_state).as_ref() else {
+                return html! { <p>{ "Preparing list data…" }</p> };
+            };
+
             let ranking = (&**ranking_state).as_ref();
-            let mut items_with_rating: Vec<_> = list
+
+            let mut items_with_scores: Vec<_> = list
                 .items
                 .iter()
-                .map(|item| {
-                    let rating = ranking
-                        .map(|system| system.rating(&item.id))
+                .enumerate()
+                .map(|(index, item)| {
+                    let score = ranking
+                        .map(|system| system.log_score(index))
                         .unwrap_or_default();
-                    (item, rating)
+                    (index, item, score)
                 })
                 .collect();
 
-            items_with_rating.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+            items_with_scores.sort_by(|a, b| {
+                b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let total_matches = match_history.len();
+            let total_matches = state.total_matches();
 
             let matchup_panel = match (&**current_match).as_ref() {
-                Some(matchup) => {
-                    let left_item = list
-                        .items
-                        .iter()
-                        .find(|item| item.id == matchup.left_id);
-                    let right_item = list
-                        .items
-                        .iter()
-                        .find(|item| item.id == matchup.right_id);
+                Some(matchup) if matchup.left_index < list.items.len()
+                    && matchup.right_index < list.items.len() =>
+                {
+                    let left_item = &list.items[matchup.left_index];
+                    let right_item = &list.items[matchup.right_index];
 
-                    match (left_item, right_item) {
-                        (Some(left), Some(right)) => {
-                            let left_callback = {
-                                let callback = on_select_winner.clone();
-                                Callback::from(move |_| callback.emit(WinnerSide::Left))
-                            };
+                    let left_callback = {
+                        let callback = on_select_winner.clone();
+                        Callback::from(move |_| callback.emit(WinnerSide::Left))
+                    };
 
-                            let right_callback = {
-                                let callback = on_select_winner.clone();
-                                Callback::from(move |_| callback.emit(WinnerSide::Right))
-                            };
+                    let right_callback = {
+                        let callback = on_select_winner.clone();
+                        Callback::from(move |_| callback.emit(WinnerSide::Right))
+                    };
 
-                            html! {
-                                <div class="matchup">
-                                    <div class="card">
-                                        <p class="card-title">{ &left.label }</p>
-                                        <button class="win-button" onclick={left_callback}>{ "Wins" }</button>
-                                    </div>
-                                    <span class="vs-label">{ "vs" }</span>
-                                    <div class="card">
-                                        <p class="card-title">{ &right.label }</p>
-                                        <button class="win-button" onclick={right_callback}>{ "Wins" }</button>
-                                    </div>
-                                </div>
-                            }
-                        }
-                        _ => html! { <p>{ "Match data unavailable." }</p> },
+                    html! {
+                        <div class="matchup">
+                            <div class="card">
+                                <p class="card-title">{ &left_item.label }</p>
+                                <button class="win-button" onclick={left_callback}>{ "Wins" }</button>
+                            </div>
+                            <span class="vs-label">{ "vs" }</span>
+                            <div class="card">
+                                <p class="card-title">{ &right_item.label }</p>
+                                <button class="win-button" onclick={right_callback}>{ "Wins" }</button>
+                            </div>
+                        </div>
                     }
                 }
-                None => html! { <p>{ "Not enough unique items to create a matchup." }</p> },
+                _ => html! { <p>{ "Not enough unique items to create a matchup." }</p> },
             };
 
             html! {
@@ -412,11 +434,11 @@ fn render_list_details(
                             <p>{ format!("Matches recorded: {total_matches}") }</p>
                         </div>
                         <ul>
-                            { for items_with_rating.into_iter().map(|(item, rating)| {
+                            { for items_with_scores.into_iter().map(|(_index, item, score)| {
                                 html! {
                                     <li key={item.id.clone()}>
                                         <span class="item-label">{ &item.label }</span>
-                                        <span class="item-rating">{ format!("{rating:.2}") }</span>
+                                        <span class="item-rating">{ format!("{score:.2}") }</span>
                                     </li>
                                 }
                             }) }

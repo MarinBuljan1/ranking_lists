@@ -54,7 +54,7 @@ fn app() -> Html {
     let list_state = use_state(|| None::<StoredListState>);
     let drag_state = use_state(|| None::<DragState>);
     let menu_open = use_state(|| false);
-    let lists_expanded = use_state(|| true);
+    let lists_expanded = use_state(|| false);
     let show_reset_confirm = use_state(|| false);
 
     {
@@ -336,21 +336,26 @@ fn app() -> Html {
         })
     };
 
-    let open_menu = {
+    let toggle_menu_button = {
         let menu_open = menu_open.clone();
         let show_reset_confirm = show_reset_confirm.clone();
-        Callback::from(move |_| {
-            menu_open.set(true);
-            show_reset_confirm.set(false);
+        Callback::from(move |_: yew::MouseEvent| {
+            let next = !*menu_open;
+            menu_open.set(next);
+            if !next {
+                show_reset_confirm.set(false);
+            }
         })
     };
 
-    let close_menu = {
+    let menu_close_callback = {
         let menu_open = menu_open.clone();
         let show_reset_confirm = show_reset_confirm.clone();
         Callback::from(move |_| {
-            menu_open.set(false);
-            show_reset_confirm.set(false);
+            if *menu_open {
+                menu_open.set(false);
+                show_reset_confirm.set(false);
+            }
         })
     };
 
@@ -404,7 +409,7 @@ fn app() -> Html {
         &loaded_list,
         &ranking_state,
         &list_state,
-        close_menu.clone(),
+        menu_close_callback.clone(),
         on_select_list,
         toggle_lists.clone(),
         request_reset.clone(),
@@ -415,7 +420,7 @@ fn app() -> Html {
     html! {
         <div class="app-container">
             <button class={classes!("hamburger-button", if *menu_open { "open" } else { "" })}
-                onclick={open_menu.clone()}>
+                onclick={toggle_menu_button.clone()}>
                 <span></span>
                 <span></span>
                 <span></span>
@@ -808,3 +813,5 @@ fn resolve_selection(
 pub fn run_app() {
     yew::Renderer::<App>::new().render();
 }
+
+

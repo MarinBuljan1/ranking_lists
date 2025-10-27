@@ -679,9 +679,6 @@ fn render_matchup_area(
                     "transform 0.25s ease"
                 }
             );
-            let clamped = (drag_delta / SWIPE_THRESHOLD).clamp(-1.0, 1.0);
-            let background_style = "";
-
             let pointer_down = {
                 let drag_state = drag_state.clone();
                 Callback::from(move |event: web_sys::PointerEvent| {

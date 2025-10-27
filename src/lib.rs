@@ -53,6 +53,9 @@ fn app() -> Html {
     let current_match = use_state(|| None::<Matchup>);
     let list_state = use_state(|| None::<StoredListState>);
     let drag_state = use_state(|| None::<DragState>);
+    let menu_open = use_state(|| false);
+    let lists_expanded = use_state(|| true);
+    let show_reset_confirm = use_state(|| false);
 
     {
         let list_status = list_status.clone();
@@ -293,6 +296,7 @@ fn app() -> Html {
         let loaded_list = loaded_list.clone();
         let items_status = items_status.clone();
         let drag_state_handle = drag_state.clone();
+        let show_reset_confirm_handle = show_reset_confirm.clone();
 
         Callback::from(move |_| {
             let Some(list_id) = (*selected_list).clone() else {
@@ -328,70 +332,277 @@ fn app() -> Html {
             let next_match = random_matchup(item_ids.len(), None);
             current_match.set(next_match);
             drag_state_handle.set(None);
+            show_reset_confirm_handle.set(false);
         })
     };
 
+    let open_menu = {
+        let menu_open = menu_open.clone();
+        let show_reset_confirm = show_reset_confirm.clone();
+        Callback::from(move |_| {
+            menu_open.set(true);
+            show_reset_confirm.set(false);
+        })
+    };
+
+    let close_menu = {
+        let menu_open = menu_open.clone();
+        let show_reset_confirm = show_reset_confirm.clone();
+        Callback::from(move |_| {
+            menu_open.set(false);
+            show_reset_confirm.set(false);
+        })
+    };
+
+    let toggle_lists = {
+        let lists_expanded = lists_expanded.clone();
+        Callback::from(move |_| {
+            let next = !*lists_expanded;
+            lists_expanded.set(next);
+        })
+    };
+
+    let request_reset = {
+        let show_reset_confirm = show_reset_confirm.clone();
+        Callback::from(move |_| {
+            show_reset_confirm.set(true);
+        })
+    };
+
+    let cancel_reset = {
+        let show_reset_confirm = show_reset_confirm.clone();
+        Callback::from(move |_| {
+            show_reset_confirm.set(false);
+        })
+    };
+
+    let confirm_reset = {
+        let on_reset = on_reset.clone();
+        Callback::from(move |_| {
+            on_reset.emit(());
+        })
+    };
+
+    let on_select_list = {
+        let selected_list = selected_list.clone();
+        let menu_open = menu_open.clone();
+        let show_reset_confirm = show_reset_confirm.clone();
+        Callback::from(move |list_id: String| {
+            selected_list.set(Some(list_id.clone()));
+            show_reset_confirm.set(false);
+            menu_open.set(false);
+        })
+    };
+
+    let menu_markup = render_menu(
+        *menu_open,
+        *lists_expanded,
+        *show_reset_confirm,
+        &list_status,
+        &lists,
+        &selected_list,
+        &loaded_list,
+        &ranking_state,
+        &list_state,
+        close_menu.clone(),
+        on_select_list,
+        toggle_lists.clone(),
+        request_reset.clone(),
+        cancel_reset.clone(),
+        confirm_reset.clone(),
+    );
+
     html! {
         <div class="app-container">
-            <header class="top-bar">
-                <h1>{ "Ranking Lists" }</h1>
-                <button class="reset-button" onclick={on_reset}>{ "Reset Rankings" }</button>
-            </header>
-            <main class="content">
-                <section class="lists-panel">
-                    { render_lists_panel(&list_status, &lists, &selected_list) }
-                </section>
-                <section class="list-details">
-                    { render_list_details(
-                        &items_status,
-                        &loaded_list,
-                        &ranking_state,
-                        &list_state,
-                        &current_match,
-                        &drag_state,
-                        &on_match_result
-                    ) }
-                </section>
+            <button class={classes!("hamburger-button", if *menu_open { "open" } else { "" })}
+                onclick={open_menu.clone()}>
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            { menu_markup }
+            <main class="content single-column">
+                { render_matchup_area(
+                    &items_status,
+                    &loaded_list,
+                    &current_match,
+                    &drag_state,
+                    &on_match_result
+                ) }
             </main>
         </div>
     }
 }
 
-fn render_lists_panel(
+fn render_menu(
+    menu_open: bool,
+    lists_expanded: bool,
+    show_reset_confirm: bool,
     status: &UseStateHandle<FetchStatus>,
     lists: &UseStateHandle<Option<Vec<ListInfo>>>,
     selected_list: &UseStateHandle<Option<String>>,
+    loaded: &UseStateHandle<Option<LoadedList>>,
+    ranking_state: &UseStateHandle<Option<BradleyTerry>>,
+    list_state: &UseStateHandle<Option<StoredListState>>,
+    on_close: Callback<()>,
+    on_select_list: Callback<String>,
+    on_toggle_lists: Callback<()>,
+    on_request_reset: Callback<()>,
+    on_cancel_reset: Callback<()>,
+    on_confirm_reset: Callback<()>,
 ) -> Html {
-    match &**status {
-        FetchStatus::Loading => html! { <p>{ "Loading lists…" }</p> },
-        FetchStatus::Error(message) => html! { <p class="error">{ message }</p> },
+    let overlay_classes = classes!(
+        "menu-overlay",
+        if menu_open { Some("open") } else { None }
+    );
+    let panel_classes = classes!(
+        "menu-panel",
+        if menu_open { Some("open") } else { None }
+    );
+    let stop_click = Callback::from(|event: web_sys::MouseEvent| event.stop_propagation());
+    let close_click = {
+        let on_close = on_close.clone();
+        Callback::from(move |_| on_close.emit(()))
+    };
+    let toggle_lists_click = {
+        let on_toggle_lists = on_toggle_lists.clone();
+        Callback::from(move |_| on_toggle_lists.emit(()))
+    };
+    let request_reset_click = {
+        let on_request_reset = on_request_reset.clone();
+        Callback::from(move |_| on_request_reset.emit(()))
+    };
+    let cancel_reset_click = {
+        let on_cancel_reset = on_cancel_reset.clone();
+        Callback::from(move |_| on_cancel_reset.emit(()))
+    };
+    let confirm_reset_click = {
+        let on_confirm_reset = on_confirm_reset.clone();
+        Callback::from(move |_| on_confirm_reset.emit(()))
+    };
+
+    let current_selection = (*selected_list).clone();
+
+    let lists_section = match &**status {
+        FetchStatus::Loading => html! { <p class="menu-placeholder">{ "Loading lists…" }</p> },
+        FetchStatus::Error(message) => html! { <p class="menu-error">{ message }</p> },
         FetchStatus::Idle => {
             let Some(list_vec) = &**lists else {
-                return html! { <p>{ "No lists available." }</p> };
+                return html! { <p class="menu-placeholder">{ "No lists available." }</p> };
             };
 
             if list_vec.is_empty() {
-                return html! { <p>{ "No lists available." }</p> };
-            }
-
-            let current_selection = (*selected_list).clone();
-
-            html! {
-                <div class="list-selector">
-                    <h2>{ "Available Lists" }</h2>
-                    <div class="list-buttons">
-                        { for list_vec.iter().map(|info| render_list_button(info, &current_selection, selected_list)) }
+                html! { <p class="menu-placeholder">{ "No lists available." }</p> }
+            } else {
+                html! {
+                    <div class="menu-list-buttons">
+                        { for list_vec.iter().map(|info| render_list_button(info, &current_selection, &on_select_list)) }
                     </div>
-                </div>
+                }
             }
         }
+    };
+
+    let total_matches = list_state
+        .deref()
+        .as_ref()
+        .map(|state| state.total_matches())
+        .unwrap_or(0);
+
+    let rankings = if let (Some(list), Some(ranking)) =
+        ((&**loaded).as_ref(), (&**ranking_state).as_ref())
+    {
+        let mut items_with_scores: Vec<_> = list
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let rating = ranking.display_rating(index);
+                (item.id.clone(), item.label.clone(), rating)
+            })
+            .collect();
+
+        items_with_scores.sort_by(|a, b| {
+            b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        html! {
+            <ul class="menu-ranking-list">
+                { for items_with_scores.into_iter().map(|(id, label, rating)| {
+                    html! {
+                        <li key={id}>
+                            <span class="item-label">{ label }</span>
+                            <span class="item-rating">{ format!("{rating:.0}") }</span>
+                        </li>
+                    }
+                }) }
+            </ul>
+        }
+    } else {
+        html! { <p class="menu-placeholder">{ "Rankings will appear once a list is loaded." }</p> }
+    };
+
+    html! {
+        <div class={overlay_classes} onclick={close_click.clone()}>
+            <aside class={panel_classes} onclick={stop_click}>
+                <div class="menu-header">
+                    <h2>{ "Menu" }</h2>
+                    <button class="menu-close" onclick={close_click}>{ "×" }</button>
+                </div>
+
+                <div class="menu-section">
+                    <button class={classes!("menu-toggle", if lists_expanded { "expanded" } else { "" })}
+                        onclick={toggle_lists_click}>
+                        <span>{ "Lists" }</span>
+                        <span class="chevron">{ if lists_expanded { "▾" } else { "▸" } }</span>
+                    </button>
+                    {
+                        if lists_expanded {
+                            lists_section
+                        } else {
+                            html! {}
+                        }
+                    }
+                </div>
+
+                <div class="menu-section">
+                    {
+                        if show_reset_confirm {
+                            html! {
+                                <div class="reset-confirm">
+                                    <p>{ "Are you sure you want to reset the rankings?" }</p>
+                                    <div class="confirm-actions">
+                                        <button class="confirm-yes" onclick={confirm_reset_click.clone()}>{ "Yes" }</button>
+                                        <button class="confirm-no" onclick={cancel_reset_click.clone()}>{ "No" }</button>
+                                    </div>
+                                </div>
+                            }
+                        } else {
+                            html! {
+                                <button class="menu-action reset" onclick={request_reset_click}>{ "Reset Rankings" }</button>
+                            }
+                        }
+                    }
+                </div>
+
+                <div class="menu-section rankings">
+                    <div class="menu-section-header">
+                        <h3>{ "Current Rankings" }</h3>
+                        <span class="matches-count">{ format!("Matches recorded: {total_matches}") }</span>
+                    </div>
+                    <div class="ranking-scroll">
+                        { rankings }
+                    </div>
+                </div>
+            </aside>
+        </div>
     }
 }
 
 fn render_list_button(
     info: &ListInfo,
     current_selection: &Option<String>,
-    selected_list: &UseStateHandle<Option<String>>,
+    on_select_list: &Callback<String>,
 ) -> Html {
     let id = info.id.clone();
     let label = info.label.clone();
@@ -407,9 +618,9 @@ fn render_list_button(
     };
 
     let on_click = {
-        let selected_list = selected_list.clone();
+        let on_select_list = on_select_list.clone();
         Callback::from(move |_| {
-            selected_list.set(Some(id.clone()));
+            on_select_list.emit(id.clone());
         })
     };
 
@@ -418,11 +629,9 @@ fn render_list_button(
     }
 }
 
-fn render_list_details(
+fn render_matchup_area(
     status: &UseStateHandle<FetchStatus>,
     loaded: &UseStateHandle<Option<LoadedList>>,
-    ranking_state: &UseStateHandle<Option<BradleyTerry>>,
-    list_state: &UseStateHandle<Option<StoredListState>>,
     current_match: &UseStateHandle<Option<Matchup>>,
     drag_state: &UseStateHandle<Option<DragState>>,
     on_select_winner: &Callback<WinnerSide>,
@@ -434,33 +643,6 @@ fn render_list_details(
             let Some(list) = (&**loaded).as_ref() else {
                 return html! { <p>{ "Select a list to begin." }</p> };
             };
-
-            let Some(state) = (&**list_state).as_ref() else {
-                return html! { <p>{ "Preparing list data…" }</p> };
-            };
-
-            let ranking = (&**ranking_state).as_ref();
-
-            let mut items_with_scores: Vec<_> = list
-                .items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    let log_score = ranking
-                        .map(|system| system.log_score(index))
-                        .unwrap_or_default();
-                    let rating = ranking
-                        .map(|system| system.display_rating(index))
-                        .unwrap_or(1500.0);
-                    (index, item, log_score, rating)
-                })
-                .collect();
-
-            items_with_scores.sort_by(|a, b| {
-                b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            let total_matches = state.total_matches();
             let drag_delta = drag_state
                 .deref()
                 .as_ref()
@@ -598,26 +780,8 @@ fn render_list_details(
             };
 
             html! {
-                <div class="list-preview">
-                    <div class="matchup-panel">
-                        { matchup_panel }
-                    </div>
-                    <div class="ranking-summary">
-                        <div class="summary-header">
-                            <h2>{ format!("Items in {}", list.info.label) }</h2>
-                            <p>{ format!("Matches recorded: {total_matches}") }</p>
-                        </div>
-                        <ul>
-                            { for items_with_scores.into_iter().map(|(_index, item, _log_score, rating)| {
-                                html! {
-                                    <li key={item.id.clone()}>
-                                        <span class="item-label">{ &item.label }</span>
-                                        <span class="item-rating">{ format!("{rating:.0}") }</span>
-                                    </li>
-                                }
-                            }) }
-                        </ul>
-                    </div>
+                <div class="matchup-wrapper">
+                    { matchup_panel }
                 </div>
             }
         }

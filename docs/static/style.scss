@@ -345,9 +345,42 @@ body {
     user-select: none;
     touch-action: pan-y;
     will-change: transform;
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      border-radius: inherit;
+      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.18), transparent 60%);
+      mix-blend-mode: screen;
+      opacity: 0.55;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: -25%;
+      border-radius: inherit;
+      background: radial-gradient(circle at top, rgba(255, 255, 255, 0.2), transparent 55%),
+        radial-gradient(circle at bottom, rgba(0, 0, 0, 0.22), transparent 60%);
+      pointer-events: none;
+      opacity: 0.45;
+      transition: opacity 0.3s ease;
+    }
 
     &:active {
       cursor: grabbing;
+      &::before {
+        opacity: 0.75;
+      }
+
+      &::after {
+        opacity: 0.6;
+      }
     }
 
     .card {
@@ -429,3 +462,27 @@ body {
     width: min(86vw, 360px);
   }
 }
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at top, rgba(255, 255, 255, 0.18), transparent 55%),
+        radial-gradient(circle at bottom, rgba(0, 0, 0, 0.22), transparent 60%);
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: radial-gradient(circle at center, rgba(0, 0, 0, 0.18), transparent 65%);
+      pointer-events: none;
+      filter: blur(14px);
+      opacity: 0.45;
+    }
+

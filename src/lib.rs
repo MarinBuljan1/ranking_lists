@@ -669,15 +669,18 @@ fn render_matchup_area(
                 .map(|d| d.current_x - d.start_x)
                 .unwrap_or(0.0);
             let is_dragging = drag_state.deref().is_some();
+            let background_position =
+                50.0 + ((drag_delta / (SWIPE_THRESHOLD * 3.0)).clamp(-1.0, 1.0) * 50.0);
             let transform_style = format!(
-                "transform: translateX({:.1}px) rotate({:.2}deg); transition: {};",
+                "transform: translateX({:.1}px) rotate({:.2}deg); transition: {}; background-position: {:.2}% 0%;",
                 drag_delta,
                 drag_delta * 0.05,
                 if is_dragging {
                     "transform 0s"
                 } else {
                     "transform 0.25s ease"
-                }
+                },
+                background_position
             );
             let pointer_down = {
                 let drag_state = drag_state.clone();

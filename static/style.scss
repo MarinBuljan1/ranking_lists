@@ -337,6 +337,8 @@ body {
     gap: 1rem;
     padding: 1.25rem;
     background: linear-gradient(110deg, rgba(0, 123, 255, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 50.5%, rgba(255, 82, 82, 0.85) 50.5%);
+    background-size: 200% 100%;
+    background-position: 50% 0%;
     border-radius: 18px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
     cursor: grab;

@@ -20,7 +20,7 @@ start "SASS Watch" sass --watch static/style.scss:static/style.css
 start "Cargo Watch" cargo watch -w src -s "build_and_sync.bat"
 
 :: Watch for asset and static changes to keep docs in sync
-start "Docs Sync" cargo watch -w static -w icons -w assets/lists -w assets/index.json -w index.html -w manifest.json -w service-worker.js -s "sync_docs.bat"
+start "Docs Sync" cargo watch -w static -w icons -w assets/lists -w index.html -w manifest.json -w service-worker.js -s "sync_docs.bat"
 
 :: Serve the files and enable live reload, watching for JSON changes too
 start "Browser Sync" browser-sync start --server --files "static/*.css, pkg/*, assets/lists/*.json, assets/index.json" --startPath index.html

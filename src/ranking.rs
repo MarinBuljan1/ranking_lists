@@ -98,11 +98,7 @@ impl BradleyTerry {
     }
 
     pub fn log_score(&self, index: usize) -> f64 {
-        self.abilities
-            .get(index)
-            .copied()
-            .unwrap_or(1.0)
-            .ln()
+        self.abilities.get(index).copied().unwrap_or(1.0).ln()
     }
 
     pub fn display_rating(&self, index: usize) -> f64 {
@@ -158,11 +154,7 @@ mod tests {
 
     #[test]
     fn abilities_increase_for_winner() {
-        let wins = vec![
-            vec![0, 3, 0],
-            vec![0, 0, 0],
-            vec![0, 0, 0],
-        ];
+        let wins = vec![vec![0, 3, 0], vec![0, 0, 0], vec![0, 0, 0]];
 
         let mut system = BradleyTerry::new(3);
         system.run_iterations(&wins, 10);

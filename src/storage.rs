@@ -79,18 +79,11 @@ pub fn load_list_state<'a>(
     app_state.lists.get(list_id)
 }
 
-pub fn upsert_list_state(
-    app_state: &mut StoredAppState,
-    list_id: &str,
-    state: StoredListState,
-) {
+pub fn upsert_list_state(app_state: &mut StoredAppState, list_id: &str, state: StoredListState) {
     app_state.lists.insert(list_id.to_string(), state);
 }
 
-pub fn align_list_state(
-    existing: Option<StoredListState>,
-    item_ids: &[String],
-) -> StoredListState {
+pub fn align_list_state(existing: Option<StoredListState>, item_ids: &[String]) -> StoredListState {
     match existing {
         Some(state) if state.matches_items(item_ids) => state,
         Some(state) => reorder_state(state, item_ids),

@@ -61,8 +61,7 @@ pub async fn fetch_available_lists() -> Result<Vec<ListInfo>, DataError> {
     }
 
     let text = response.text().await.map_err(DataError::network)?;
-    let ids: Vec<String> =
-        serde_json::from_str(&text).map_err(DataError::parse)?;
+    let ids: Vec<String> = serde_json::from_str(&text).map_err(DataError::parse)?;
 
     let infos = ids
         .into_iter()
@@ -95,8 +94,7 @@ pub async fn load_list(list_id: &str) -> Result<LoadedList, DataError> {
     }
 
     let text = response.text().await.map_err(DataError::network)?;
-    let raw_items: Vec<String> =
-        serde_json::from_str(&text).map_err(DataError::parse)?;
+    let raw_items: Vec<String> = serde_json::from_str(&text).map_err(DataError::parse)?;
 
     if raw_items.is_empty() {
         return Err(DataError::Parse(format!(
@@ -156,8 +154,9 @@ fn display_name(id: &str) -> String {
         .map(|segment| {
             let mut chars = segment.chars();
             match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>()
-                    + &chars.as_str().to_lowercase(),
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
                 None => String::new(),
             }
         })

@@ -24,13 +24,11 @@ pub fn random_matchup(count: usize, last: Option<&Matchup>) -> Option<Matchup> {
     candidates.shuffle(&mut rng);
     let left = *candidates.first()?;
 
-    let mut right_candidates: Vec<usize> =
-        (0..count).filter(|index| *index != left).collect();
+    let mut right_candidates: Vec<usize> = (0..count).filter(|index| *index != left).collect();
 
     if let Some(previous) = last {
-        right_candidates.retain(|index| {
-            *index != previous.left_index && *index != previous.right_index
-        });
+        right_candidates
+            .retain(|index| *index != previous.left_index && *index != previous.right_index);
         if right_candidates.is_empty() {
             right_candidates = (0..count).filter(|index| *index != left).collect();
         }

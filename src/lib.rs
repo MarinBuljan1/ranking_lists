@@ -6,16 +6,16 @@ pub mod storage;
 use data::{fetch_available_lists, load_list, ListInfo, LoadedList};
 use matchflow::{random_matchup, Matchup};
 use ranking::BradleyTerry;
+use std::ops::Deref;
 use storage::{
     align_list_state, load_list_state, load_state as load_storage_state,
     save_state as persist_state, upsert_list_state, StoredListState,
 };
-use std::ops::Deref;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use yew::prelude::*;
 use web_sys::window;
+use yew::prelude::*;
 
 const SWIPE_THRESHOLD: f64 = 80.0;
 
@@ -77,10 +77,9 @@ fn app() -> Html {
                 spawn_local(async move {
                     match fetch_available_lists().await {
                         Ok(fetched) => {
-                            let previous =
-                                previously_selected.or_else(|| persisted_state.selected_list.clone());
-                            let default_selection =
-                                resolve_selection(&fetched, previous);
+                            let previous = previously_selected
+                                .or_else(|| persisted_state.selected_list.clone());
+                            let default_selection = resolve_selection(&fetched, previous);
                             lists.set(Some(fetched));
                             if let Some(selection) = default_selection {
                                 selected_list.set(Some(selection));
@@ -135,19 +134,16 @@ fn app() -> Html {
                         spawn_local(async move {
                             match load_list(&id).await {
                                 Ok(list) => {
-                                    let item_ids: Vec<String> = list
-                                        .items
-                                        .iter()
-                                        .map(|item| item.id.clone())
-                                        .collect();
+                                    let item_ids: Vec<String> =
+                                        list.items.iter().map(|item| item.id.clone()).collect();
 
                                     let existing =
                                         load_list_state(&persisted_snapshot, &id).cloned();
-                                    let mut stored_state =
-                                        align_list_state(existing, &item_ids);
+                                    let mut stored_state = align_list_state(existing, &item_ids);
 
-                                    let mut ranking =
-                                        BradleyTerry::from_abilities(stored_state.abilities.clone());
+                                    let mut ranking = BradleyTerry::from_abilities(
+                                        stored_state.abilities.clone(),
+                                    );
                                     ranking.ensure_len(item_ids.len());
                                     ranking.run_iterations(&stored_state.win_matrix, 8);
                                     stored_state.abilities = ranking.to_vec();
@@ -161,8 +157,7 @@ fn app() -> Html {
                                     persist_state(&updated_app_state);
                                     persisted_state_handle.set(updated_app_state);
 
-                                    let next_match =
-                                        random_matchup(item_ids.len(), None);
+                                    let next_match = random_matchup(item_ids.len(), None);
 
                                     list_state_handle.set(Some(stored_state));
                                     ranking_state.set(Some(ranking));
@@ -281,8 +276,7 @@ fn app() -> Html {
             persist_state(&updated_app_state);
             persisted_state_handle.set(updated_app_state);
 
-            let next_match =
-                random_matchup(list.items.len(), Some(&prev_match));
+            let next_match = random_matchup(list.items.len(), Some(&prev_match));
             current_match.set(next_match);
             drag_state_handle.set(None);
         })
@@ -308,11 +302,7 @@ fn app() -> Html {
                 return;
             };
 
-            let item_ids: Vec<String> = list
-                .items
-                .iter()
-                .map(|item| item.id.clone())
-                .collect();
+            let item_ids: Vec<String> = list.items.iter().map(|item| item.id.clone()).collect();
 
             let mut new_state = StoredListState::new(&item_ids);
 
@@ -488,14 +478,8 @@ fn render_menu(
     on_cancel_reset: Callback<()>,
     on_confirm_reset: Callback<()>,
 ) -> Html {
-    let overlay_classes = classes!(
-        "menu-overlay",
-        if menu_open { Some("open") } else { None }
-    );
-    let panel_classes = classes!(
-        "menu-panel",
-        if menu_open { Some("open") } else { None }
-    );
+    let overlay_classes = classes!("menu-overlay", if menu_open { Some("open") } else { None });
+    let panel_classes = classes!("menu-panel", if menu_open { Some("open") } else { None });
     let stop_click = Callback::from(|event: web_sys::MouseEvent| event.stop_propagation());
     let close_click = {
         let on_close = on_close.clone();
@@ -559,9 +543,8 @@ fn render_menu(
             })
             .collect();
 
-        items_with_scores.sort_by(|a, b| {
-            b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        items_with_scores
+            .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
         html! {
             <ul class="menu-ranking-list">
@@ -697,19 +680,7 @@ fn render_matchup_area(
                 }
             );
             let clamped = (drag_delta / SWIPE_THRESHOLD).clamp(-1.0, 1.0);
-            let background_style = if clamped >= 0.0 {
-                format!(
-                    "background: linear-gradient(135deg, rgba(255, 82, 82, {:.2}), rgba(255, 82, 82, {:.2}));",
-                    clamped.abs() * 0.6 + 0.2,
-                    clamped.abs() * 0.2 + 0.05
-                )
-            } else {
-                format!(
-                    "background: linear-gradient(135deg, rgba(0, 123, 255, {:.2}), rgba(0, 123, 255, {:.2}));",
-                    clamped.abs() * 0.6 + 0.2,
-                    clamped.abs() * 0.2 + 0.05
-                )
-            };
+            let background_style = "";
 
             let pointer_down = {
                 let drag_state = drag_state.clone();
@@ -790,8 +761,9 @@ fn render_matchup_area(
             };
 
             let matchup_panel = match (&**current_match).as_ref() {
-                Some(matchup) if matchup.left_index < list.items.len()
-                    && matchup.right_index < list.items.len() =>
+                Some(matchup)
+                    if matchup.left_index < list.items.len()
+                        && matchup.right_index < list.items.len() =>
                 {
                     let left_item = &list.items[matchup.left_index];
                     let right_item = &list.items[matchup.right_index];
@@ -799,7 +771,7 @@ fn render_matchup_area(
                     html! {
                         <div class="card-container">
                             <div class="matchup swipe-enabled"
-                                style={format!("{}{}", transform_style, background_style)}
+                                style={transform_style}
                                 onpointerdown={pointer_down}
                                 onpointermove={pointer_move}
                                 onpointerup={pointer_end.clone()}
@@ -829,10 +801,7 @@ fn render_matchup_area(
     }
 }
 
-fn resolve_selection(
-    lists: &[ListInfo],
-    previous: Option<String>,
-) -> Option<String> {
+fn resolve_selection(lists: &[ListInfo], previous: Option<String>) -> Option<String> {
     match previous {
         Some(current) => {
             if lists.iter().any(|info| info.id == current) {
@@ -862,18 +831,14 @@ fn body_background_for_delta(delta: f64) -> Option<String> {
         let end_alpha = 0.38 * strength + 0.02;
         Some(format!(
             "radial-gradient(circle at top, rgba(0, 88, 196, {:.3}), rgba(4, 21, 64, {:.3}))",
-            start_alpha,
-            end_alpha
+            start_alpha, end_alpha
         ))
     } else {
         let start_alpha = 0.18 * strength;
         let end_alpha = 0.38 * strength + 0.02;
         Some(format!(
             "radial-gradient(circle at top, rgba(255, 62, 62, {:.3}), rgba(112, 8, 18, {:.3}))",
-            start_alpha,
-            end_alpha
+            start_alpha, end_alpha
         ))
     }
 }
-
-

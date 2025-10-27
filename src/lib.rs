@@ -10,9 +10,20 @@ use storage::{
     align_list_state, load_list_state, load_state as load_storage_state,
     save_state as persist_state, upsert_list_state, StoredListState,
 };
+use std::ops::Deref;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
+
+const SWIPE_THRESHOLD: f64 = 80.0;
+
+#[derive(Clone)]
+struct DragState {
+    pointer_id: i32,
+    start_x: f64,
+    current_x: f64,
+}
 
 #[derive(PartialEq, Clone)]
 enum FetchStatus {
@@ -41,6 +52,7 @@ fn app() -> Html {
     let ranking_state = use_state(|| None::<BradleyTerry>);
     let current_match = use_state(|| None::<Matchup>);
     let list_state = use_state(|| None::<StoredListState>);
+    let drag_state = use_state(|| None::<DragState>);
 
     {
         let list_status = list_status.clone();
@@ -93,6 +105,7 @@ fn app() -> Html {
         let current_match = current_match.clone();
         let list_state_handle = list_state.clone();
         let persisted_state_handle = persisted_state.clone();
+        let drag_state_handle = drag_state.clone();
 
         use_effect_with_deps(
             move |selected: &Option<String>| {
@@ -103,6 +116,7 @@ fn app() -> Html {
                         ranking_state.set(None);
                         current_match.set(None);
                         list_state_handle.set(None);
+                        drag_state_handle.set(None);
 
                         let id = id.clone();
                         let items_status = items_status.clone();
@@ -112,6 +126,7 @@ fn app() -> Html {
                         let list_state_handle = list_state_handle.clone();
                         let persisted_state_handle = persisted_state_handle.clone();
                         let persisted_snapshot = (*persisted_state_handle).clone();
+                        let drag_state_handle = drag_state_handle.clone();
 
                         spawn_local(async move {
                             match load_list(&id).await {
@@ -149,6 +164,7 @@ fn app() -> Html {
                                     ranking_state.set(Some(ranking));
                                     current_match.set(next_match);
                                     loaded_list.set(Some(list));
+                                    drag_state_handle.set(None);
                                     items_status.set(FetchStatus::Idle);
                                 }
                                 Err(err) => {
@@ -157,6 +173,7 @@ fn app() -> Html {
                                     ranking_state.set(None);
                                     current_match.set(None);
                                     list_state_handle.set(None);
+                                    drag_state_handle.set(None);
                                 }
                             }
                         });
@@ -166,6 +183,7 @@ fn app() -> Html {
                         ranking_state.set(None);
                         current_match.set(None);
                         list_state_handle.set(None);
+                        drag_state_handle.set(None);
                         items_status.set(FetchStatus::Idle);
                     }
                 };
@@ -201,6 +219,7 @@ fn app() -> Html {
         let list_state_handle = list_state.clone();
         let selected_list = selected_list.clone();
         let persisted_state_handle = persisted_state.clone();
+        let drag_state_handle = drag_state.clone();
 
         Callback::from(move |side: WinnerSide| {
             let Some(list_id) = (*selected_list).clone() else {
@@ -261,6 +280,7 @@ fn app() -> Html {
             let next_match =
                 random_matchup(list.items.len(), Some(&prev_match));
             current_match.set(next_match);
+            drag_state_handle.set(None);
         })
     };
 
@@ -272,6 +292,7 @@ fn app() -> Html {
         let current_match = current_match.clone();
         let loaded_list = loaded_list.clone();
         let items_status = items_status.clone();
+        let drag_state_handle = drag_state.clone();
 
         Callback::from(move |_| {
             let Some(list_id) = (*selected_list).clone() else {
@@ -306,6 +327,7 @@ fn app() -> Html {
             items_status.set(FetchStatus::Idle);
             let next_match = random_matchup(item_ids.len(), None);
             current_match.set(next_match);
+            drag_state_handle.set(None);
         })
     };
 
@@ -326,6 +348,7 @@ fn app() -> Html {
                         &ranking_state,
                         &list_state,
                         &current_match,
+                        &drag_state,
                         &on_match_result
                     ) }
                 </section>
@@ -401,6 +424,7 @@ fn render_list_details(
     ranking_state: &UseStateHandle<Option<BradleyTerry>>,
     list_state: &UseStateHandle<Option<StoredListState>>,
     current_match: &UseStateHandle<Option<Matchup>>,
+    drag_state: &UseStateHandle<Option<DragState>>,
     on_select_winner: &Callback<WinnerSide>,
 ) -> Html {
     match &**status {
@@ -437,6 +461,100 @@ fn render_list_details(
             });
 
             let total_matches = state.total_matches();
+            let drag_delta = drag_state
+                .deref()
+                .as_ref()
+                .map(|d| d.current_x - d.start_x)
+                .unwrap_or(0.0);
+            let is_dragging = drag_state.deref().is_some();
+            let transform_style = format!(
+                "transform: translateX({:.1}px) rotate({:.2}deg); transition: {};",
+                drag_delta,
+                drag_delta * 0.05,
+                if is_dragging {
+                    "transform 0s"
+                } else {
+                    "transform 0.25s ease"
+                }
+            );
+
+            let pointer_down = {
+                let drag_state = drag_state.clone();
+                Callback::from(move |event: web_sys::PointerEvent| {
+                    event.prevent_default();
+                    if drag_state.deref().is_some() {
+                        return;
+                    }
+                    if let Some(target) = event
+                        .target()
+                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    {
+                        let _ = target.set_pointer_capture(event.pointer_id());
+                    }
+                    drag_state.set(Some(DragState {
+                        pointer_id: event.pointer_id(),
+                        start_x: event.client_x() as f64,
+                        current_x: event.client_x() as f64,
+                    }));
+                })
+            };
+
+            let pointer_move = {
+                let drag_state = drag_state.clone();
+                Callback::from(move |event: web_sys::PointerEvent| {
+                    if let Some(mut state) = drag_state.deref().clone() {
+                        if state.pointer_id == event.pointer_id() {
+                            event.prevent_default();
+                            state.current_x = event.client_x() as f64;
+                            drag_state.set(Some(state));
+                        }
+                    }
+                })
+            };
+
+            let pointer_end = {
+                let drag_state = drag_state.clone();
+                let on_select_winner = on_select_winner.clone();
+                Callback::from(move |event: web_sys::PointerEvent| {
+                    if let Some(state) = drag_state.deref().clone() {
+                        if state.pointer_id == event.pointer_id() {
+                            if let Some(target) = event
+                                .target()
+                                .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                            {
+                                let _ = target.release_pointer_capture(event.pointer_id());
+                            }
+                            let delta = state.current_x - state.start_x;
+                            if delta.abs() > SWIPE_THRESHOLD {
+                                let side = if delta > 0.0 {
+                                    WinnerSide::Right
+                                } else {
+                                    WinnerSide::Left
+                                };
+                                on_select_winner.emit(side);
+                            }
+                            drag_state.set(None);
+                        }
+                    }
+                })
+            };
+
+            let pointer_cancel = {
+                let drag_state = drag_state.clone();
+                Callback::from(move |event: web_sys::PointerEvent| {
+                    if let Some(state) = drag_state.deref().clone() {
+                        if state.pointer_id == event.pointer_id() {
+                            if let Some(target) = event
+                                .target()
+                                .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                            {
+                                let _ = target.release_pointer_capture(event.pointer_id());
+                            }
+                            drag_state.set(None);
+                        }
+                    }
+                })
+            };
 
             let matchup_panel = match (&**current_match).as_ref() {
                 Some(matchup) if matchup.left_index < list.items.len()
@@ -456,15 +574,22 @@ fn render_list_details(
                     };
 
                     html! {
-                        <div class="matchup">
-                            <div class="card">
-                                <p class="card-title">{ &left_item.label }</p>
-                                <button class="win-button" onclick={left_callback}>{ "Wins" }</button>
-                            </div>
-                            <span class="vs-label">{ "vs" }</span>
-                            <div class="card">
-                                <p class="card-title">{ &right_item.label }</p>
-                                <button class="win-button" onclick={right_callback}>{ "Wins" }</button>
+                        <div class="card-container">
+                            <div class="matchup swipe-enabled"
+                                style={transform_style}
+                                onpointerdown={pointer_down}
+                                onpointermove={pointer_move}
+                                onpointerup={pointer_end.clone()}
+                                onpointercancel={pointer_cancel}>
+                                <div class="card">
+                                    <p class="card-title">{ &left_item.label }</p>
+                                    <button class="win-button" onclick={left_callback}>{ "Wins" }</button>
+                                </div>
+                                <span class="vs-label">{ "vs" }</span>
+                                <div class="card">
+                                    <p class="card-title">{ &right_item.label }</p>
+                                    <button class="win-button" onclick={right_callback}>{ "Wins" }</button>
+                                </div>
                             </div>
                         </div>
                     }

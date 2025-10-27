@@ -1,0 +1,87 @@
+
+
+/*# sourceMappingURL=style.css.map */
+
+.card-container {
+  width: clamp(280px, 60vw, 420px);
+  margin: 1.5rem auto;
+  perspective: 1200px;
+}
+
+.matchup.swipe-enabled {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15));
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.matchup.swipe-enabled:active {
+  cursor: grabbing;
+}
+
+.matchup.swipe-enabled .card {
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.matchup.swipe-enabled .card .card-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.matchup.swipe-enabled .win-button {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.matchup.swipe-enabled .win-button:hover,
+.matchup.swipe-enabled .win-button:focus {
+  background-color: #005cd6;
+}
+
+.matchup.swipe-enabled .vs-label {
+  font-weight: 700;
+  font-size: 1.1rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .card-container {
+    width: min(90vw, 380px);
+  }
+
+  .matchup.swipe-enabled {
+    flex-direction: column;
+  }
+
+  .matchup.swipe-enabled .vs-label {
+    display: none;
+  }
+}
+

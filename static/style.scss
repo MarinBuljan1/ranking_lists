@@ -5,7 +5,6 @@
 body {
   margin: 0;
   font-family: "Inter", Arial, sans-serif;
-  background: radial-gradient(circle at top, #f5f7fb, #d9e2f3);
   color: #1b1e2a;
 }
 
@@ -301,7 +300,7 @@ body {
   justify-content: space-between;
   gap: 1rem;
   padding: 1.25rem;
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15));
+  background: linear-gradient(90deg, rgba(0, 123, 255, 0.85) 0%, rgba(255, 82, 82, 0.85) 100%);
   border-radius: 18px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
   cursor: grab;
@@ -324,8 +323,8 @@ body {
   gap: 1rem;
   padding: 1rem;
   border-radius: 14px;
-  background-color: rgba(255, 255, 255, 0.85);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  background-color: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 10px 18px rgba(0, 0, 0, 0.1);
 }
 
 .matchup.swipe-enabled .card .card-title {
@@ -333,22 +332,6 @@ body {
   font-size: 1.4rem;
   font-weight: 600;
   text-align: center;
-}
-
-.matchup.swipe-enabled .win-button {
-  padding: 0.6rem 1.4rem;
-  border-radius: 999px;
-  border: none;
-  background-color: #007bff;
-  color: white;
-  font-size: 1rem;
-  font-weight: 600;
-  transition: background-color 0.2s ease;
-}
-
-.matchup.swipe-enabled .win-button:hover,
-.matchup.swipe-enabled .win-button:focus {
-  background-color: #005cd6;
 }
 
 .matchup.swipe-enabled .vs-label {
@@ -414,5 +397,33 @@ body {
 
 .menu-list-buttons .list-button.active .chevron {
   opacity: 0.9;
+}
+
+
+.card.left-card {
+  background: rgba(0, 123, 255, 0.1);
+  border: 1px solid rgba(0, 123, 255, 0.35);
+}
+
+.card.right-card {
+  background: rgba(255, 82, 82, 0.1);
+  border: 1px solid rgba(255, 82, 82, 0.35);
+}
+
+.swipe-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  color: rgba(27, 30, 42, 0.6);
+}
+
+.card.left-card .swipe-hint {
+  color: rgba(0, 123, 255, 0.8);
+}
+
+.card.right-card .swipe-hint {
+  color: rgba(255, 82, 82, 0.8);
 }
 

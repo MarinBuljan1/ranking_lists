@@ -15,10 +15,11 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
+use web_sys::window;
 
 const SWIPE_THRESHOLD: f64 = 80.0;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct DragState {
     pointer_id: i32,
     start_x: f64,
@@ -359,6 +360,37 @@ fn app() -> Html {
         })
     };
 
+    {
+        let drag_state = drag_state.clone();
+        use_effect_with_deps(
+            move |state: &Option<DragState>| {
+                let background = state
+                    .as_ref()
+                    .and_then(|drag| body_background_for_delta(drag.current_x - drag.start_x));
+                if let Some(window) = window() {
+                    if let Some(document) = window.document() {
+                        if let Some(body) = document.body() {
+                            let style = body.style();
+                            let _ = style.set_property("transition", "background 0.25s ease");
+                            match background {
+                                Some(gradient) => {
+                                    let _ = style.set_property("background", &gradient);
+                                    let _ = style.set_property("background-image", &gradient);
+                                }
+                                None => {
+                                    let _ = style.remove_property("background");
+                                    let _ = style.remove_property("background-image");
+                                }
+                            }
+                        }
+                    }
+                }
+                || ()
+            },
+            (*drag_state).clone(),
+        );
+    }
+
     let toggle_lists = {
         let lists_expanded = lists_expanded.clone();
         Callback::from(move |_| {
@@ -664,6 +696,20 @@ fn render_matchup_area(
                     "transform 0.25s ease"
                 }
             );
+            let clamped = (drag_delta / SWIPE_THRESHOLD).clamp(-1.0, 1.0);
+            let background_style = if clamped >= 0.0 {
+                format!(
+                    "background: linear-gradient(135deg, rgba(255, 82, 82, {:.2}), rgba(255, 82, 82, {:.2}));",
+                    clamped.abs() * 0.6 + 0.2,
+                    clamped.abs() * 0.2 + 0.05
+                )
+            } else {
+                format!(
+                    "background: linear-gradient(135deg, rgba(0, 123, 255, {:.2}), rgba(0, 123, 255, {:.2}));",
+                    clamped.abs() * 0.6 + 0.2,
+                    clamped.abs() * 0.2 + 0.05
+                )
+            };
 
             let pointer_down = {
                 let drag_state = drag_state.clone();
@@ -750,32 +796,22 @@ fn render_matchup_area(
                     let left_item = &list.items[matchup.left_index];
                     let right_item = &list.items[matchup.right_index];
 
-                    let left_callback = {
-                        let callback = on_select_winner.clone();
-                        Callback::from(move |_| callback.emit(WinnerSide::Left))
-                    };
-
-                    let right_callback = {
-                        let callback = on_select_winner.clone();
-                        Callback::from(move |_| callback.emit(WinnerSide::Right))
-                    };
-
                     html! {
                         <div class="card-container">
                             <div class="matchup swipe-enabled"
-                                style={transform_style}
+                                style={format!("{}{}", transform_style, background_style)}
                                 onpointerdown={pointer_down}
                                 onpointermove={pointer_move}
                                 onpointerup={pointer_end.clone()}
                                 onpointercancel={pointer_cancel}>
-                                <div class="card">
+                                <div class="card left-card">
                                     <p class="card-title">{ &left_item.label }</p>
-                                    <button class="win-button" onclick={left_callback}>{ "Wins" }</button>
+                                    <p class="swipe-hint">{ "Swipe left" }</p>
                                 </div>
                                 <span class="vs-label">{ "vs" }</span>
-                                <div class="card">
+                                <div class="card right-card">
                                     <p class="card-title">{ &right_item.label }</p>
-                                    <button class="win-button" onclick={right_callback}>{ "Wins" }</button>
+                                    <p class="swipe-hint">{ "Swipe right" }</p>
                                 </div>
                             </div>
                         </div>
@@ -812,6 +848,32 @@ fn resolve_selection(
 #[wasm_bindgen(start)]
 pub fn run_app() {
     yew::Renderer::<App>::new().render();
+}
+
+fn body_background_for_delta(delta: f64) -> Option<String> {
+    let normalized = (delta / SWIPE_THRESHOLD).clamp(-1.0, 1.0);
+    if normalized.abs() < 0.01 {
+        return None;
+    }
+
+    let strength = normalized.abs();
+    if normalized < 0.0 {
+        let start_alpha = 0.18 * strength;
+        let end_alpha = 0.38 * strength + 0.02;
+        Some(format!(
+            "radial-gradient(circle at top, rgba(0, 88, 196, {:.3}), rgba(4, 21, 64, {:.3}))",
+            start_alpha,
+            end_alpha
+        ))
+    } else {
+        let start_alpha = 0.18 * strength;
+        let end_alpha = 0.38 * strength + 0.02;
+        Some(format!(
+            "radial-gradient(circle at top, rgba(255, 62, 62, {:.3}), rgba(112, 8, 18, {:.3}))",
+            start_alpha,
+            end_alpha
+        ))
+    }
 }
 
 

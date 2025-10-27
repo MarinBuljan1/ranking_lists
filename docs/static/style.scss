@@ -405,9 +405,18 @@ body {
 
   .matchup.swipe-enabled {
     flex-direction: column;
+    background: linear-gradient(130deg, rgba(0, 123, 255, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 50.5%, rgba(255, 82, 82, 0.85) 50.5%);
 
-    .vs-label {
-      display: none;
+    .card {
+      min-height: 60px;
+      &.left-card {
+        padding: 0 50% 0 0;
+        flex-direction: column-reverse;
+      }
+
+      &.right-card {
+        padding: 0 0 0 50%;
+      }
     }
   }
 

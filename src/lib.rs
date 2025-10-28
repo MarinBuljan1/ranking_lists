@@ -4,6 +4,7 @@ pub mod ranking;
 pub mod storage;
 
 use data::{fetch_available_lists, load_list, ListInfo, LoadedList};
+use gloo_timers::callback::Timeout;
 use matchflow::{random_matchup, Matchup};
 use ranking::BradleyTerry;
 use std::ops::Deref;
@@ -18,6 +19,10 @@ use web_sys::window;
 use yew::prelude::*;
 
 const SWIPE_THRESHOLD: f64 = 80.0;
+const FLASH_CLEAR_DELAY_MS: u32 = 280;
+const MATCH_RESOLVE_DELAY_MS: u32 = 260;
+const ENTER_ANIMATION_DURATION_MS: u32 = 1200;
+const ENTER_ANIMATION_BUFFER_MS: u32 = 80;
 
 #[derive(Clone, PartialEq)]
 struct DragState {
@@ -33,10 +38,17 @@ enum FetchStatus {
     Error(String),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum WinnerSide {
     Left,
     Right,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum CardTransition {
+    Idle,
+    Exiting { side: WinnerSide, offset: f64 },
+    Entering { side: WinnerSide },
 }
 
 #[function_component(App)]
@@ -54,6 +66,8 @@ fn app() -> Html {
     let current_match = use_state(|| None::<Matchup>);
     let list_state = use_state(|| None::<StoredListState>);
     let drag_state = use_state(|| None::<DragState>);
+    let card_transition = use_state(|| CardTransition::Idle);
+    let flash_side = use_state(|| None::<WinnerSide>);
     let menu_open = use_state(|| false);
     let lists_expanded = use_state(|| false);
     let show_reset_confirm = use_state(|| false);
@@ -218,6 +232,7 @@ fn app() -> Html {
         let list_state_handle = list_state.clone();
         let selected_list = selected_list.clone();
         let persisted_state_handle = persisted_state.clone();
+        let card_transition_handle = card_transition.clone();
         let drag_state_handle = drag_state.clone();
 
         Callback::from(move |side: WinnerSide| {
@@ -277,8 +292,22 @@ fn app() -> Html {
             persisted_state_handle.set(updated_app_state);
 
             let next_match = random_matchup(list.items.len(), Some(&prev_match));
-            current_match.set(next_match);
+            current_match.set(next_match.clone());
             drag_state_handle.set(None);
+
+            if next_match.is_some() {
+                card_transition_handle.set(CardTransition::Entering { side });
+                let card_transition_for_idle = card_transition_handle.clone();
+                Timeout::new(
+                    ENTER_ANIMATION_DURATION_MS + ENTER_ANIMATION_BUFFER_MS,
+                    move || {
+                        card_transition_for_idle.set(CardTransition::Idle);
+                    },
+                )
+                .forget();
+            } else {
+                card_transition_handle.set(CardTransition::Idle);
+            }
         })
     };
 
@@ -439,25 +468,36 @@ fn app() -> Html {
         confirm_reset.clone(),
     );
 
+    let flash_overlay = match *flash_side {
+        Some(WinnerSide::Left) => html! { <div class="decision-flash left"></div> },
+        Some(WinnerSide::Right) => html! { <div class="decision-flash right"></div> },
+        None => html! {},
+    };
+
     html! {
-        <div class="app-container">
-            <button class={classes!("hamburger-button", if *menu_open { "open" } else { "" })}
-                onclick={toggle_menu_button.clone()}>
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-            { menu_markup }
-            <main class="content single-column">
-                { render_matchup_area(
-                    &items_status,
-                    &loaded_list,
-                    &current_match,
-                    &drag_state,
-                    &on_match_result
-                ) }
-            </main>
-        </div>
+        <>
+            { flash_overlay }
+            <div class="app-container">
+                <button class={classes!("hamburger-button", if *menu_open { "open" } else { "" })}
+                    onclick={toggle_menu_button.clone()}>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                { menu_markup }
+                <main class="content single-column">
+                    { render_matchup_area(
+                        &items_status,
+                        &loaded_list,
+                        &current_match,
+                        &drag_state,
+                        &card_transition,
+                        &flash_side,
+                        &on_match_result
+                    ) }
+                </main>
+            </div>
+        </>
     }
 }
 
@@ -654,6 +694,8 @@ fn render_matchup_area(
     loaded: &UseStateHandle<Option<LoadedList>>,
     current_match: &UseStateHandle<Option<Matchup>>,
     drag_state: &UseStateHandle<Option<DragState>>,
+    card_transition: &UseStateHandle<CardTransition>,
+    flash_side: &UseStateHandle<Option<WinnerSide>>,
     on_select_winner: &Callback<WinnerSide>,
 ) -> Html {
     match &**status {
@@ -663,30 +705,69 @@ fn render_matchup_area(
             let Some(list) = (&**loaded).as_ref() else {
                 return html! { <p>{ "Select a list to begin." }</p> };
             };
-            let drag_delta = drag_state
-                .deref()
+            let transition_state = *card_transition.deref();
+            let active_drag = if matches!(transition_state, CardTransition::Idle) {
+                drag_state.deref().clone()
+            } else {
+                None
+            };
+            let drag_delta = active_drag
                 .as_ref()
                 .map(|d| d.current_x - d.start_x)
                 .unwrap_or(0.0);
-            let is_dragging = drag_state.deref().is_some();
-            let background_position =
-                50.0 + ((drag_delta / (SWIPE_THRESHOLD * 3.0)).clamp(-1.0, 1.0) * 50.0);
-            let transform_style = format!(
-                "transform: translateX({:.1}px) rotate({:.2}deg); transition: {}; background-position: {:.2}% 0%;",
-                drag_delta,
-                drag_delta * 0.05,
-                if is_dragging {
-                    "transform 0s"
-                } else {
-                    "transform 0.25s ease"
-                },
-                background_position
+            let is_dragging = active_drag.is_some();
+            let mut style_parts: Vec<String> = Vec::new();
+            if is_dragging {
+                let background_position =
+                    50.0 + ((drag_delta / (SWIPE_THRESHOLD * 3.0)).clamp(-1.0, 1.0) * 50.0);
+                style_parts.push(format!(
+                    "transform: translateX({:.1}px) rotate({:.2}deg); background-position: {:.2}% 0%;",
+                    drag_delta,
+                    drag_delta * 0.05,
+                    background_position
+                ));
+            }
+            let matchup_classes = classes!(
+                "matchup",
+                "swipe-enabled",
+                if is_dragging { Some("dragging") } else { None },
+                match transition_state {
+                    CardTransition::Exiting { side, .. } => match side {
+                        WinnerSide::Left => Some("exiting-left"),
+                        WinnerSide::Right => Some("exiting-right"),
+                    },
+                    CardTransition::Entering { side } => match side {
+                        WinnerSide::Left => Some("entering-from-right"),
+                        WinnerSide::Right => Some("entering-from-left"),
+                    },
+                    CardTransition::Idle => None,
+                }
             );
+            if let CardTransition::Exiting { side, offset } = transition_state {
+                let rotation = offset * 0.05;
+                let (exit_shift, rotation_shift) = match side {
+                    WinnerSide::Left => ("-150vw", "-12deg"),
+                    WinnerSide::Right => ("150vw", "12deg"),
+                };
+                style_parts.push(format!(
+                    "transform: translateX({:.1}px) rotate({:.2}deg); --start-x: {:.1}px; --start-rot: {:.2}deg; --exit-shift: {}; --rotation-shift: {};",
+                    offset,
+                    rotation,
+                    offset,
+                    rotation,
+                    exit_shift,
+                    rotation_shift
+                ));
+            }
+            let style = style_parts.join(" ");
             let pointer_down = {
                 let drag_state = drag_state.clone();
+                let card_transition = card_transition.clone();
                 Callback::from(move |event: web_sys::PointerEvent| {
                     event.prevent_default();
-                    if drag_state.deref().is_some() {
+                    if !matches!(*card_transition, CardTransition::Idle)
+                        || drag_state.deref().is_some()
+                    {
                         return;
                     }
                     if let Some(target) = event
@@ -705,7 +786,11 @@ fn render_matchup_area(
 
             let pointer_move = {
                 let drag_state = drag_state.clone();
+                let card_transition = card_transition.clone();
                 Callback::from(move |event: web_sys::PointerEvent| {
+                    if !matches!(*card_transition, CardTransition::Idle) {
+                        return;
+                    }
                     if let Some(mut state) = drag_state.deref().clone() {
                         if state.pointer_id == event.pointer_id() {
                             event.prevent_default();
@@ -719,6 +804,8 @@ fn render_matchup_area(
             let pointer_end = {
                 let drag_state = drag_state.clone();
                 let on_select_winner = on_select_winner.clone();
+                let card_transition = card_transition.clone();
+                let flash_side = flash_side.clone();
                 Callback::from(move |event: web_sys::PointerEvent| {
                     if let Some(state) = drag_state.deref().clone() {
                         if state.pointer_id == event.pointer_id() {
@@ -729,13 +816,35 @@ fn render_matchup_area(
                                 let _ = target.release_pointer_capture(event.pointer_id());
                             }
                             let delta = state.current_x - state.start_x;
-                            if delta.abs() > SWIPE_THRESHOLD {
+                            if delta.abs() > SWIPE_THRESHOLD
+                                && matches!(*card_transition, CardTransition::Idle)
+                            {
                                 let side = if delta > 0.0 {
                                     WinnerSide::Right
                                 } else {
                                     WinnerSide::Left
                                 };
-                                on_select_winner.emit(side);
+                                card_transition.set(CardTransition::Exiting {
+                                    side,
+                                    offset: delta,
+                                });
+                                flash_side.set(Some(side));
+
+                                {
+                                    let flash_side = flash_side.clone();
+                                    Timeout::new(FLASH_CLEAR_DELAY_MS, move || {
+                                        flash_side.set(None);
+                                    })
+                                    .forget();
+                                }
+
+                                {
+                                    let on_select_winner = on_select_winner.clone();
+                                    Timeout::new(MATCH_RESOLVE_DELAY_MS, move || {
+                                        on_select_winner.emit(side);
+                                    })
+                                    .forget();
+                                }
                             }
                             drag_state.set(None);
                         }
@@ -770,8 +879,8 @@ fn render_matchup_area(
 
                     html! {
                         <div class="card-container">
-                            <div class="matchup swipe-enabled"
-                                style={transform_style}
+                            <div class={matchup_classes}
+                                style={style}
                                 onpointerdown={pointer_down}
                                 onpointermove={pointer_move}
                                 onpointerup={pointer_end.clone()}

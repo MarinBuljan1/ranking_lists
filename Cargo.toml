@@ -9,6 +9,7 @@ console_log = "0.2"
 gloo-events = "0.2"
 gloo-net = "0.2"
 gloo-storage = "0.2"
+gloo-timers = "0.2"
 indexmap = { version = "2", features = ["serde"] }
 js-sys = "0.3"
 log = "0.4"

@@ -339,6 +339,9 @@ body {
     background: linear-gradient(110deg, rgba(0, 123, 255, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 50.5%, rgba(255, 82, 82, 0.85) 50.5%);
     background-size: 200% 100%;
     background-position: 50% 0%;
+    transform: translateX(0);
+    transition: transform 0.25s ease, background-position 0.25s ease, opacity 0.22s ease;
+    transform-origin: center;
     border-radius: 18px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
     cursor: grab;
@@ -347,6 +350,42 @@ body {
     will-change: transform;
     position: relative;
     overflow: hidden;
+    --start-x: 0px;
+    --start-rot: 0deg;
+    --exit-shift: 0px;
+    --rotation-shift: 0deg;
+
+    &.dragging {
+      cursor: grabbing;
+      transition: transform 0s, background-position 0s, opacity 0.22s ease;
+    }
+
+    &.exiting-left,
+    &.exiting-right,
+    &.entering-from-left,
+    &.entering-from-right {
+      pointer-events: none;
+    }
+
+    &.exiting-left {
+      --exit-shift: -160vw;
+      --rotation-shift: -14deg;
+      animation: swipe-exit 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
+    &.exiting-right {
+      --exit-shift: 160vw;
+      --rotation-shift: 14deg;
+      animation: swipe-exit 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
+    &.entering-from-left {
+      animation: swipe-enter-from-left 1.2s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+    }
+
+    &.entering-from-right {
+      animation: swipe-enter-from-right 1.2s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+    }
 
     &::before {
       content: "";
@@ -431,6 +470,71 @@ body {
   }
 }
 
+.decision-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1200;
+  opacity: 0;
+  background: var(--flash-color);
+  animation: decision-flash 0.28s ease-out forwards;
+  backdrop-filter: saturate(140%);
+}
+
+.decision-flash.left {
+  --flash-color: rgba(20, 105, 255, 0.35);
+}
+
+.decision-flash.right {
+  --flash-color: rgba(255, 72, 72, 0.35);
+}
+
+@keyframes swipe-exit {
+  0% {
+    transform: translateX(var(--start-x)) rotate(var(--start-rot));
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(var(--start-x) + var(--exit-shift)))
+      rotate(calc(var(--start-rot) + var(--rotation-shift)));
+    opacity: 0;
+  }
+}
+
+@keyframes swipe-enter-from-left {
+  0% {
+    transform: translateX(-110%) rotate(-6deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes swipe-enter-from-right {
+  0% {
+    transform: translateX(110%) rotate(6deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes decision-flash {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .card-container {
     width: min(90vw, 380px);
@@ -462,27 +566,3 @@ body {
     width: min(86vw, 360px);
   }
 }
-
-    &::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: radial-gradient(circle at top, rgba(255, 255, 255, 0.18), transparent 55%),
-        radial-gradient(circle at bottom, rgba(0, 0, 0, 0.22), transparent 60%);
-      pointer-events: none;
-      mix-blend-mode: screen;
-    }
-
-
-    &::before {
-      content: "";
-      position: absolute;
-      inset: -1px;
-      border-radius: inherit;
-      background: radial-gradient(circle at center, rgba(0, 0, 0, 0.18), transparent 65%);
-      pointer-events: none;
-      filter: blur(14px);
-      opacity: 0.45;
-    }
-

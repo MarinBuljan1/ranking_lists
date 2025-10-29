@@ -30,6 +30,7 @@ body {
 }
 
 .app-container {
+  touch-action: pan-y;
   position: relative;
   min-height: 100vh;
   display: flex;

@@ -15,7 +15,7 @@ use storage::{
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::window;
+use web_sys::{window, Element};
 use yew::prelude::*;
 
 const SWIPE_THRESHOLD: f64 = 80.0;
@@ -55,6 +55,26 @@ impl SwipeBackground {
 
     fn end_alpha_value(&self) -> String {
         format!("{:.4}", self.end_alpha.clamp(0.0, 1.0))
+    }
+}
+
+#[derive(Clone)]
+struct PointerCallbacks {
+    down: Callback<web_sys::PointerEvent>,
+    move_cb: Callback<web_sys::PointerEvent>,
+    up: Callback<web_sys::PointerEvent>,
+    cancel: Callback<web_sys::PointerEvent>,
+}
+
+impl PointerCallbacks {
+    fn noop() -> Self {
+        let noop = Callback::from(|_: web_sys::PointerEvent| {});
+        Self {
+            down: noop.clone(),
+            move_cb: noop.clone(),
+            up: noop.clone(),
+            cancel: noop,
+        }
     }
 }
 
@@ -425,18 +445,18 @@ fn app() -> Html {
                             let _ = style.set_property("transition", transition);
                             match background {
                                 Some(bg) => {
+                                    let _ = style.set_property(
+                                        "--swipe-color-start",
+                                        &bg.start_color_value(),
+                                    );
                                     let _ = style
-                                        .set_property("--swipe-color-start", &bg.start_color_value());
-                                    let _ =
-                                        style.set_property("--swipe-color-end", &bg.end_color_value());
+                                        .set_property("--swipe-color-end", &bg.end_color_value());
                                     let _ = style.set_property(
                                         "--swipe-alpha-start",
                                         &bg.start_alpha_value(),
                                     );
-                                    let _ = style.set_property(
-                                        "--swipe-alpha-end",
-                                        &bg.end_alpha_value(),
-                                    );
+                                    let _ = style
+                                        .set_property("--swipe-alpha-end", &bg.end_alpha_value());
                                 }
                                 None => {
                                     let _ = style.set_property("--swipe-alpha-start", "0");
@@ -516,11 +536,26 @@ fn app() -> Html {
         None => html! {},
     };
 
+    let (matchup_markup, pointer_callbacks) = render_matchup_area(
+        &items_status,
+        &loaded_list,
+        &current_match,
+        &drag_state,
+        &card_transition,
+        &flash_side,
+        &on_match_result,
+    );
+
     html! {
         <>
             { flash_overlay }
-            <div class="app-container">
+            <div class="app-container"
+                onpointerdown={pointer_callbacks.down.clone()}
+                onpointermove={pointer_callbacks.move_cb.clone()}
+                onpointerup={pointer_callbacks.up.clone()}
+                onpointercancel={pointer_callbacks.cancel.clone()}>
                 <button class={classes!("hamburger-button", if *menu_open { "open" } else { "" })}
+                    data-swipe-ignore="true"
                     onclick={toggle_menu_button.clone()}>
                     <span></span>
                     <span></span>
@@ -528,15 +563,7 @@ fn app() -> Html {
                 </button>
                 { menu_markup }
                 <main class="content single-column">
-                    { render_matchup_area(
-                        &items_status,
-                        &loaded_list,
-                        &current_match,
-                        &drag_state,
-                        &card_transition,
-                        &flash_side,
-                        &on_match_result
-                    ) }
+                    { matchup_markup }
                 </main>
             </div>
         </>
@@ -587,7 +614,7 @@ fn render_menu(
     let current_selection = (*selected_list).clone();
 
     let lists_section = match &**status {
-        FetchStatus::Loading => html! { <p class="menu-placeholder">{ "Loading lists…" }</p> },
+        FetchStatus::Loading => html! { <p class="menu-placeholder">{ "Loading listsâ€¦" }</p> },
         FetchStatus::Error(message) => html! { <p class="menu-error">{ message }</p> },
         FetchStatus::Idle => {
             let Some(list_vec) = &**lists else {
@@ -645,18 +672,18 @@ fn render_menu(
     };
 
     html! {
-        <div class={overlay_classes} onclick={close_click.clone()}>
-            <aside class={panel_classes} onclick={stop_click}>
+        <div class={overlay_classes} data-swipe-ignore="true" onclick={close_click.clone()}>
+            <aside class={panel_classes} data-swipe-ignore="true" onclick={stop_click}>
                 <div class="menu-header">
                     <h2>{ "Menu" }</h2>
-                    <button class="menu-close" onclick={close_click}>{ "×" }</button>
+                    <button class="menu-close" onclick={close_click}>{ "Ã—" }</button>
                 </div>
 
                 <div class="menu-section">
                     <button class={classes!("menu-toggle", if lists_expanded { "expanded" } else { "" })}
                         onclick={toggle_lists_click}>
                         <span>{ "Lists" }</span>
-                        <span class="chevron">{ if lists_expanded { "▾" } else { "▸" } }</span>
+                        <span class="chevron">{ if lists_expanded { "â–¾" } else { "â–¸" } }</span>
                     </button>
                     {
                         if lists_expanded {
@@ -739,13 +766,22 @@ fn render_matchup_area(
     card_transition: &UseStateHandle<CardTransition>,
     flash_side: &UseStateHandle<Option<WinnerSide>>,
     on_select_winner: &Callback<WinnerSide>,
-) -> Html {
+) -> (Html, PointerCallbacks) {
     match &**status {
-        FetchStatus::Loading => html! { <p>{ "Loading list…" }</p> },
-        FetchStatus::Error(message) => html! { <p class="error">{ message }</p> },
+        FetchStatus::Loading => (
+            html! { <p>{ "Loading listâ€¦" }</p> },
+            PointerCallbacks::noop(),
+        ),
+        FetchStatus::Error(message) => (
+            html! { <p class="error">{ message }</p> },
+            PointerCallbacks::noop(),
+        ),
         FetchStatus::Idle => {
             let Some(list) = (&**loaded).as_ref() else {
-                return html! { <p>{ "Select a list to begin." }</p> };
+                return (
+                    html! { <p>{ "Select a list to begin." }</p> },
+                    PointerCallbacks::noop(),
+                );
             };
             let transition_state = *card_transition.deref();
             let active_drag = if matches!(transition_state, CardTransition::Idle) {
@@ -806,18 +842,29 @@ fn render_matchup_area(
                 let drag_state = drag_state.clone();
                 let card_transition = card_transition.clone();
                 Callback::from(move |event: web_sys::PointerEvent| {
-                    event.prevent_default();
+                    if should_ignore_swipe(event.target()) {
+                        return;
+                    }
                     if !matches!(*card_transition, CardTransition::Idle)
                         || drag_state.deref().is_some()
                     {
                         return;
                     }
+                    event.prevent_default();
+                    let pointer_id = event.pointer_id();
                     if let Some(target) = event
                         .target()
                         .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
                     {
-                        let _ = target.set_pointer_capture(event.pointer_id());
+                        let _ = target.set_pointer_capture(pointer_id);
+                    } else if let Some(window) = web_sys::window() {
+                        if let Some(document) = window.document() {
+                            if let Some(body) = document.body() {
+                                let _ = body.set_pointer_capture(pointer_id);
+                            }
+                        }
                     }
+
                     drag_state.set(Some(DragState {
                         pointer_id: event.pointer_id(),
                         start_x: event.client_x() as f64,
@@ -911,6 +958,11 @@ fn render_matchup_area(
                 })
             };
 
+            let down_for_html = pointer_down.clone();
+            let move_for_html = pointer_move.clone();
+            let end_for_html = pointer_end.clone();
+            let cancel_for_html = pointer_cancel.clone();
+
             let matchup_panel = match (&**current_match).as_ref() {
                 Some(matchup)
                     if matchup.left_index < list.items.len()
@@ -923,10 +975,10 @@ fn render_matchup_area(
                         <div class="card-container">
                             <div class={matchup_classes}
                                 style={style}
-                                onpointerdown={pointer_down}
-                                onpointermove={pointer_move}
-                                onpointerup={pointer_end.clone()}
-                                onpointercancel={pointer_cancel}>
+                                onpointerdown={down_for_html.clone()}
+                                onpointermove={move_for_html.clone()}
+                                onpointerup={end_for_html.clone()}
+                                onpointercancel={cancel_for_html.clone()}>
                                 <div class="card left-card">
                                     <p class="card-title">{ &left_item.label }</p>
                                     <p class="swipe-hint">{ "Swipe left" }</p>
@@ -943,11 +995,20 @@ fn render_matchup_area(
                 _ => html! { <p>{ "Not enough unique items to create a matchup." }</p> },
             };
 
-            html! {
+            let html_output = html! {
                 <div class="matchup-wrapper">
                     { matchup_panel }
                 </div>
-            }
+            };
+
+            let callbacks = PointerCallbacks {
+                down: pointer_down,
+                move_cb: pointer_move,
+                up: pointer_end,
+                cancel: pointer_cancel,
+            };
+
+            (html_output, callbacks)
         }
     }
 }
@@ -968,6 +1029,18 @@ fn resolve_selection(lists: &[ListInfo], previous: Option<String>) -> Option<Str
 #[wasm_bindgen(start)]
 pub fn run_app() {
     yew::Renderer::<App>::new().render();
+}
+
+fn should_ignore_swipe(target: Option<web_sys::EventTarget>) -> bool {
+    target
+        .and_then(|t| t.dyn_into::<Element>().ok())
+        .and_then(|element| {
+            element
+                .closest("[data-swipe-ignore=\"true\"]")
+                .ok()
+                .flatten()
+        })
+        .is_some()
 }
 
 fn swipe_background_for_delta(delta: f64) -> Option<SwipeBackground> {

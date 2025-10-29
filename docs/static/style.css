@@ -1,11 +1,32 @@
 
-html, body {
+@property --swipe-alpha-start {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --swipe-alpha-end {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+html,
+body {
   margin: 0;
   font-family: "Inter", Arial, sans-serif;
   color: #1b1e2a;
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+}
+
+body {
+  background-color: #ffffff;
+  --swipe-color-start: 0 88 196;
+  --swipe-color-end: 4 21 64;
+  --swipe-alpha-start: 0;
+  --swipe-alpha-end: 0;
+  background-image: radial-gradient(circle at center, rgba(var(--swipe-color-start)/var(--swipe-alpha-start)) 100%, transparent 100%), radial-gradient(circle at center, rgba(var(--swipe-color-end)/var(--swipe-alpha-end)) 100%, transparent 100%);
+  transition: --swipe-alpha-start 0.05s ease, --swipe-alpha-end 1s ease;
 }
 
 .app-container {
@@ -477,8 +498,8 @@ html, body {
   .matchup.swipe-enabled {
     flex-direction: column;
     background: linear-gradient(130deg, rgba(0, 123, 255, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 49.5%, rgba(122, 102, 180, 0.85) 50.5%, rgba(255, 82, 82, 0.85) 50.5%);
-    background-size: 220% 220%;
-    background-position: 50% 50%;
+    background-size: 200% 100%;
+    background-position: 50% 0%;
   }
   .matchup.swipe-enabled.dragging {
     background-position: inherit;

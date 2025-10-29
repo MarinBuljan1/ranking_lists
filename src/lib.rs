@@ -31,6 +31,33 @@ struct DragState {
     current_x: f64,
 }
 
+struct SwipeBackground {
+    start_rgb: (u8, u8, u8),
+    end_rgb: (u8, u8, u8),
+    start_alpha: f64,
+    end_alpha: f64,
+}
+
+impl SwipeBackground {
+    fn start_color_value(&self) -> String {
+        let (r, g, b) = self.start_rgb;
+        format!("{r} {g} {b}")
+    }
+
+    fn end_color_value(&self) -> String {
+        let (r, g, b) = self.end_rgb;
+        format!("{r} {g} {b}")
+    }
+
+    fn start_alpha_value(&self) -> String {
+        format!("{:.4}", self.start_alpha.clamp(0.0, 1.0))
+    }
+
+    fn end_alpha_value(&self) -> String {
+        format!("{:.4}", self.end_alpha.clamp(0.0, 1.0))
+    }
+}
+
 #[derive(PartialEq, Clone)]
 enum FetchStatus {
     Idle,
@@ -385,20 +412,33 @@ fn app() -> Html {
             move |state: &Option<DragState>| {
                 let background = state
                     .as_ref()
-                    .and_then(|drag| body_background_for_delta(drag.current_x - drag.start_x));
+                    .and_then(|drag| swipe_background_for_delta(drag.current_x - drag.start_x));
                 if let Some(window) = window() {
                     if let Some(document) = window.document() {
                         if let Some(body) = document.body() {
                             let style = body.style();
-                            let _ = style.set_property("transition", "background 0.5s ease");
+                            let _ = style.set_property(
+                                "transition",
+                                "--swipe-alpha-start 0.05s ease, --swipe-alpha-end 1s ease",
+                            );
                             match background {
-                                Some(gradient) => {
-                                    let _ = style.set_property("background", &gradient);
-                                    let _ = style.set_property("background-image", &gradient);
+                                Some(bg) => {
+                                    let _ = style.set_property(
+                                        "--swipe-color-start",
+                                        &bg.start_color_value(),
+                                    );
+                                    let _ = style
+                                        .set_property("--swipe-color-end", &bg.end_color_value());
+                                    let _ = style.set_property(
+                                        "--swipe-alpha-start",
+                                        &bg.start_alpha_value(),
+                                    );
+                                    let _ = style
+                                        .set_property("--swipe-alpha-end", &bg.end_alpha_value());
                                 }
                                 None => {
-                                    let _ = style.remove_property("background");
-                                    let _ = style.remove_property("background-image");
+                                    let _ = style.set_property("--swipe-alpha-start", "0");
+                                    let _ = style.set_property("--swipe-alpha-end", "0");
                                 }
                             }
                         }
@@ -721,7 +761,7 @@ fn render_matchup_area(
                 let background_position =
                     50.0 + ((drag_delta / (SWIPE_THRESHOLD * 3.0)).clamp(-1.0, 1.0) * 50.0);
                 style_parts.push(format!(
-                    "transform: translateX({:.1}px) rotate({:.2}deg); background-position: {:.2}% 0%;",
+                    "transform: translateX({:.1}px) rotate({:.2}deg); background-position-x: {:.2}%;",
                     drag_delta,
                     drag_delta * 0.05,
                     background_position
@@ -928,26 +968,29 @@ pub fn run_app() {
     yew::Renderer::<App>::new().render();
 }
 
-fn body_background_for_delta(delta: f64) -> Option<String> {
+fn swipe_background_for_delta(delta: f64) -> Option<SwipeBackground> {
     let normalized = (delta / SWIPE_THRESHOLD).clamp(-1.0, 1.0);
     if normalized.abs() < 0.01 {
         return None;
     }
 
     let strength = normalized.abs();
+    let start_alpha = (0.18 * strength).min(1.0);
+    let end_alpha = (0.38 * strength + 0.02).min(1.0);
+
     if normalized < 0.0 {
-        let start_alpha = 0.18 * strength;
-        let end_alpha = 0.38 * strength + 0.02;
-        Some(format!(
-            "radial-gradient(circle at top, rgba(0, 88, 196, {:.3}), rgba(4, 21, 64, {:.3}))",
-            start_alpha, end_alpha
-        ))
+        Some(SwipeBackground {
+            start_rgb: (0, 88, 196),
+            end_rgb: (4, 21, 64),
+            start_alpha,
+            end_alpha,
+        })
     } else {
-        let start_alpha = 0.18 * strength;
-        let end_alpha = 0.38 * strength + 0.02;
-        Some(format!(
-            "radial-gradient(circle at top, rgba(255, 62, 62, {:.3}), rgba(112, 8, 18, {:.3}))",
-            start_alpha, end_alpha
-        ))
+        Some(SwipeBackground {
+            start_rgb: (255, 62, 62),
+            end_rgb: (112, 8, 18),
+            start_alpha,
+            end_alpha,
+        })
     }
 }

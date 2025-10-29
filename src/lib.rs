@@ -417,24 +417,26 @@ fn app() -> Html {
                     if let Some(document) = window.document() {
                         if let Some(body) = document.body() {
                             let style = body.style();
-                            let _ = style.set_property(
-                                "transition",
-                                "--swipe-alpha-start 0.05s ease, --swipe-alpha-end 1s ease",
-                            );
+                            let transition = if background.is_some() {
+                                "--swipe-alpha-start 0.05s ease, --swipe-alpha-end 0.05s ease"
+                            } else {
+                                "--swipe-alpha-start 1s ease, --swipe-alpha-end 1s ease"
+                            };
+                            let _ = style.set_property("transition", transition);
                             match background {
                                 Some(bg) => {
-                                    let _ = style.set_property(
-                                        "--swipe-color-start",
-                                        &bg.start_color_value(),
-                                    );
                                     let _ = style
-                                        .set_property("--swipe-color-end", &bg.end_color_value());
+                                        .set_property("--swipe-color-start", &bg.start_color_value());
+                                    let _ =
+                                        style.set_property("--swipe-color-end", &bg.end_color_value());
                                     let _ = style.set_property(
                                         "--swipe-alpha-start",
                                         &bg.start_alpha_value(),
                                     );
-                                    let _ = style
-                                        .set_property("--swipe-alpha-end", &bg.end_alpha_value());
+                                    let _ = style.set_property(
+                                        "--swipe-alpha-end",
+                                        &bg.end_alpha_value(),
+                                    );
                                 }
                                 None => {
                                     let _ = style.set_property("--swipe-alpha-start", "0");

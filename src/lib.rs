@@ -639,25 +639,36 @@ fn render_menu(
         .map(|state| state.total_matches())
         .unwrap_or(0);
 
-    let rankings = if let (Some(list), Some(ranking)) =
-        ((&**loaded).as_ref(), (&**ranking_state).as_ref())
-    {
+    let rankings = if let (Some(list), Some(ranking), Some(state)) = (
+        (&**loaded).as_ref(),
+        (&**ranking_state).as_ref(),
+        (&**list_state).as_ref(),
+    ) {
         let mut items_with_scores: Vec<_> = list
             .items
             .iter()
             .enumerate()
             .map(|(index, item)| {
                 let rating = ranking.display_rating(index);
-                (item.id.clone(), item.label.clone(), rating)
+                let wins: u32 = state.win_matrix[index].iter().copied().sum();
+                let losses: u32 = state
+                    .win_matrix
+                    .iter()
+                    .map(|row| row.get(index).copied().unwrap_or(0))
+                    .sum();
+                let matches = wins + losses;
+                (item.id.clone(), item.label.clone(), rating, matches)
             })
             .collect();
+
+        items_with_scores.retain(|(_, _, _, matches)| *matches > 0);
 
         items_with_scores
             .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
         html! {
             <ul class="menu-ranking-list">
-                { for items_with_scores.into_iter().map(|(id, label, rating)| {
+                { for items_with_scores.into_iter().map(|(id, label, rating, _)| {
                     html! {
                         <li key={id}>
                             <span class="item-label">{ label }</span>

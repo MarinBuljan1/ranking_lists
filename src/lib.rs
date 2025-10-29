@@ -19,7 +19,7 @@ use web_sys::window;
 use yew::prelude::*;
 
 const SWIPE_THRESHOLD: f64 = 80.0;
-const FLASH_CLEAR_DELAY_MS: u32 = 280;
+const FLASH_CLEAR_DELAY_MS: u32 = 1000;
 const MATCH_RESOLVE_DELAY_MS: u32 = 260;
 const ENTER_ANIMATION_DURATION_MS: u32 = 1200;
 const ENTER_ANIMATION_BUFFER_MS: u32 = 80;
@@ -390,7 +390,7 @@ fn app() -> Html {
                     if let Some(document) = window.document() {
                         if let Some(body) = document.body() {
                             let style = body.style();
-                            let _ = style.set_property("transition", "background 0.25s ease");
+                            let _ = style.set_property("transition", "background 0.5s ease");
                             match background {
                                 Some(gradient) => {
                                     let _ = style.set_property("background", &gradient);

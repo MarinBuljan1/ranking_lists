@@ -26,6 +26,8 @@ pub struct StoredListState {
     pub item_ids: Vec<String>,
     pub win_matrix: Vec<Vec<u32>>,
     pub abilities: Vec<f64>,
+    #[serde(default)]
+    pub match_totals: Vec<u32>,
 }
 
 impl StoredListState {
@@ -35,6 +37,7 @@ impl StoredListState {
             item_ids: item_ids.to_vec(),
             win_matrix: vec![vec![0; count]; count],
             abilities: vec![1.0; count],
+            match_totals: vec![0; count],
         }
     }
 
@@ -49,10 +52,14 @@ impl StoredListState {
     }
 
     pub fn total_matches(&self) -> u32 {
-        self.win_matrix
-            .iter()
-            .map(|row| row.iter().sum::<u32>())
-            .sum()
+        if self.match_totals.len() == self.item_ids.len() {
+            self.match_totals.iter().copied().sum::<u32>() / 2
+        } else {
+            self.win_matrix
+                .iter()
+                .map(|row| row.iter().sum::<u32>())
+                .sum()
+        }
     }
 }
 
@@ -85,7 +92,12 @@ pub fn upsert_list_state(app_state: &mut StoredAppState, list_id: &str, state: S
 
 pub fn align_list_state(existing: Option<StoredListState>, item_ids: &[String]) -> StoredListState {
     match existing {
-        Some(state) if state.matches_items(item_ids) => state,
+        Some(mut state) if state.matches_items(item_ids) => {
+            if state.match_totals.len() != state.item_ids.len() {
+                state.match_totals = compute_match_totals(&state.win_matrix);
+            }
+            state
+        }
         Some(state) => reorder_state(state, item_ids),
         None => StoredListState::new(item_ids),
     }
@@ -122,6 +134,27 @@ fn reorder_state(state: StoredListState, item_ids: &[String]) -> StoredListState
             }
         }
     }
+    new_state.match_totals = compute_match_totals(&new_state.win_matrix);
 
     new_state
+}
+
+fn compute_match_totals(win_matrix: &[Vec<u32>]) -> Vec<u32> {
+    let count = win_matrix.len();
+    let mut totals = vec![0u32; count];
+    for i in 0..count {
+        for j in 0..count {
+            if i == j {
+                continue;
+            }
+            let matches = win_matrix[i].get(j).copied().unwrap_or(0)
+                + win_matrix
+                    .get(j)
+                    .and_then(|row| row.get(i))
+                    .copied()
+                    .unwrap_or(0);
+            totals[i] = totals[i].saturating_add(matches);
+        }
+    }
+    totals
 }

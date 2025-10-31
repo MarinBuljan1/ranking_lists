@@ -218,7 +218,12 @@ fn app() -> Html {
                                     persist_state(&updated_app_state);
                                     persisted_state_handle.set(updated_app_state);
 
-                                    let next_match = random_matchup(item_ids.len(), None);
+                                    let next_match = random_matchup(
+                                        ranking.abilities(),
+                                        &stored_state.win_matrix,
+                                        &stored_state.match_totals,
+                                        None,
+                                    );
 
                                     list_state_handle.set(Some(stored_state));
                                     ranking_state.set(Some(ranking));
@@ -295,9 +300,9 @@ fn app() -> Html {
                 return;
             };
 
-            let Some(list) = (&*loaded_list).as_ref() else {
+            if (&*loaded_list).is_none() {
                 return;
-            };
+            }
 
             let Some(mut stored_state) = (*list_state_handle).clone() else {
                 return;
@@ -326,9 +331,23 @@ fn app() -> Html {
             stored_state.win_matrix[winner_index][loser_index] =
                 stored_state.win_matrix[winner_index][loser_index].saturating_add(1);
 
+            if let Some(total) = stored_state.match_totals.get_mut(winner_index) {
+                *total = total.saturating_add(1);
+            }
+            if let Some(total) = stored_state.match_totals.get_mut(loser_index) {
+                *total = total.saturating_add(1);
+            }
+
             ranking.ensure_len(stored_state.win_matrix.len());
             ranking.run_iterations(&stored_state.win_matrix, 6);
             stored_state.abilities = ranking.to_vec();
+
+            let next_match = random_matchup(
+                ranking.abilities(),
+                &stored_state.win_matrix,
+                &stored_state.match_totals,
+                Some(&prev_match),
+            );
 
             list_state_handle.set(Some(stored_state.clone()));
             ranking_state.set(Some(ranking.clone()));
@@ -338,7 +357,6 @@ fn app() -> Html {
             persist_state(&updated_app_state);
             persisted_state_handle.set(updated_app_state);
 
-            let next_match = random_matchup(list.items.len(), Some(&prev_match));
             current_match.set(next_match.clone());
             drag_state_handle.set(None);
 
@@ -387,6 +405,13 @@ fn app() -> Html {
             ranking.run_iterations(&new_state.win_matrix, 4);
             new_state.abilities = ranking.to_vec();
 
+            let next_match = random_matchup(
+                ranking.abilities(),
+                &new_state.win_matrix,
+                &new_state.match_totals,
+                None,
+            );
+
             list_state_handle.set(Some(new_state.clone()));
             ranking_state.set(Some(ranking));
 
@@ -396,7 +421,6 @@ fn app() -> Html {
             persisted_state_handle.set(updated_app_state);
 
             items_status.set(FetchStatus::Idle);
-            let next_match = random_matchup(item_ids.len(), None);
             current_match.set(next_match);
             drag_state_handle.set(None);
             show_reset_confirm_handle.set(false);
@@ -614,7 +638,7 @@ fn render_menu(
     let current_selection = (*selected_list).clone();
 
     let lists_section = match &**status {
-        FetchStatus::Loading => html! { <p class="menu-placeholder">{ "Loading listsâ€¦" }</p> },
+        FetchStatus::Loading => html! { <p class="menu-placeholder">{ "Loading lists..." }</p> },
         FetchStatus::Error(message) => html! { <p class="menu-error">{ message }</p> },
         FetchStatus::Idle => {
             let Some(list_vec) = &**lists else {
@@ -650,13 +674,7 @@ fn render_menu(
             .enumerate()
             .map(|(index, item)| {
                 let rating = ranking.display_rating(index);
-                let wins: u32 = state.win_matrix[index].iter().copied().sum();
-                let losses: u32 = state
-                    .win_matrix
-                    .iter()
-                    .map(|row| row.get(index).copied().unwrap_or(0))
-                    .sum();
-                let matches = wins + losses;
+                let matches = state.match_totals.get(index).copied().unwrap_or(0);
                 (item.id.clone(), item.label.clone(), rating, matches)
             })
             .collect();
@@ -687,14 +705,14 @@ fn render_menu(
             <aside class={panel_classes} data-swipe-ignore="true" onclick={stop_click}>
                 <div class="menu-header">
                     <h2>{ "Menu" }</h2>
-                    <button class="menu-close" onclick={close_click}>{ "Ã—" }</button>
+                    <button class="menu-close" onclick={close_click}>{ "Close" }</button>
                 </div>
 
                 <div class="menu-section">
                     <button class={classes!("menu-toggle", if lists_expanded { "expanded" } else { "" })}
                         onclick={toggle_lists_click}>
                         <span>{ "Lists" }</span>
-                        <span class="chevron">{ if lists_expanded { "â–¾" } else { "â–¸" } }</span>
+                        <span class="chevron">{ if lists_expanded { "v" } else { ">" } }</span>
                     </button>
                     {
                         if lists_expanded {
@@ -780,7 +798,7 @@ fn render_matchup_area(
 ) -> (Html, PointerCallbacks) {
     match &**status {
         FetchStatus::Loading => (
-            html! { <p>{ "Loading listâ€¦" }</p> },
+            html! { <p>{ "Loading list..." }</p> },
             PointerCallbacks::noop(),
         ),
         FetchStatus::Error(message) => (

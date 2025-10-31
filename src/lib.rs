@@ -705,14 +705,14 @@ fn render_menu(
             <aside class={panel_classes} data-swipe-ignore="true" onclick={stop_click}>
                 <div class="menu-header">
                     <h2>{ "Menu" }</h2>
-                    <button class="menu-close" onclick={close_click}>{ "Close" }</button>
+                    <button class="menu-close" onclick={close_click}>{ "×" }</button>
                 </div>
 
                 <div class="menu-section">
                     <button class={classes!("menu-toggle", if lists_expanded { "expanded" } else { "" })}
                         onclick={toggle_lists_click}>
                         <span>{ "Lists" }</span>
-                        <span class="chevron">{ if lists_expanded { "v" } else { ">" } }</span>
+                        <span class="chevron">{ if lists_expanded { "▾" } else { "▸" } }</span>
                     </button>
                     {
                         if lists_expanded {

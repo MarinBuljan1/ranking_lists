@@ -28,7 +28,6 @@ pub fn random_matchup(
     // Bias first selection toward higher-rated items and those with fewer total matches.
     let total_ability: f64 = abilities.iter().copied().sum::<f64>().max(MIN_WEIGHT);
     let mut first_weights = Vec::with_capacity(count);
-    let confidence_k = (count as f64).max(1.0) / 4.0;
     for i in 0..count {
         let ability_bias = (abilities[i].max(MIN_WEIGHT) / total_ability).powf(TOP_BIAS_POWER);
         let total_matches = match_totals.get(i).copied().unwrap_or_else(|| {
@@ -40,10 +39,16 @@ pub fn random_matchup(
                     .copied()
                     .sum::<u32>()
         });
-        let confidence = if confidence_k <= f64::EPSILON {
-            0.0
+        let total_matches_f = total_matches as f64;
+        let total_opponents = (count.saturating_sub(1)) as f64;
+        let confidence = if total_matches >= 1 && total_opponents > 1.0 {
+            let variance_component = (0.25 / total_matches_f).sqrt();
+            let coverage =
+                ((total_opponents - total_matches_f).max(0.0) / (total_opponents - 1.0)).sqrt();
+            let interval = 1.96 * variance_component * coverage;
+            (1.0 - interval).clamp(0.0, 1.0)
         } else {
-            (total_matches as f64) / ((total_matches as f64) + confidence_k)
+            0.0
         };
         let uncertainty = (1.0 - confidence).max(0.0).max(MIN_WEIGHT);
         first_weights.push((ability_bias * uncertainty).max(MIN_WEIGHT));

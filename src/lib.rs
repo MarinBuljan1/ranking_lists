@@ -24,6 +24,13 @@ const MATCH_RESOLVE_DELAY_MS: u32 = 260;
 const ENTER_ANIMATION_DURATION_MS: u32 = 1200;
 const ENTER_ANIMATION_BUFFER_MS: u32 = 80;
 
+#[derive(Clone)]
+struct UndoEntry {
+    stored_state: StoredListState,
+    ranking: BradleyTerry,
+    matchup: Matchup,
+}
+
 #[derive(Clone, PartialEq)]
 struct DragState {
     pointer_id: i32,
@@ -115,6 +122,7 @@ fn app() -> Html {
     let drag_state = use_state(|| None::<DragState>);
     let card_transition = use_state(|| CardTransition::Idle);
     let flash_side = use_state(|| None::<WinnerSide>);
+    let undo_state = use_state(|| None::<UndoEntry>);
     let menu_open = use_state(|| false);
     let lists_expanded = use_state(|| false);
     let show_reset_confirm = use_state(|| false);
@@ -124,6 +132,7 @@ fn app() -> Html {
         let lists = lists.clone();
         let selected_list = selected_list.clone();
         let persisted_state = persisted_state.clone();
+        let undo_state = undo_state.clone();
 
         use_effect_with_deps(
             move |_| {
@@ -134,6 +143,7 @@ fn app() -> Html {
                 let selected_list = selected_list.clone();
                 let previously_selected = (*selected_list).clone();
                 let persisted_state = persisted_state.clone();
+                let undo_state = undo_state.clone();
 
                 spawn_local(async move {
                     match fetch_available_lists().await {
@@ -145,6 +155,7 @@ fn app() -> Html {
                             if let Some(selection) = default_selection {
                                 selected_list.set(Some(selection));
                             }
+                            undo_state.set(None);
                             list_status.set(FetchStatus::Idle);
                         }
                         Err(err) => {
@@ -170,6 +181,7 @@ fn app() -> Html {
         let list_state_handle = list_state.clone();
         let persisted_state_handle = persisted_state.clone();
         let drag_state_handle = drag_state.clone();
+        let undo_state_handle = undo_state.clone();
 
         use_effect_with_deps(
             move |selected: &Option<String>| {
@@ -181,6 +193,7 @@ fn app() -> Html {
                         current_match.set(None);
                         list_state_handle.set(None);
                         drag_state_handle.set(None);
+                        undo_state_handle.set(None);
 
                         let id = id.clone();
                         let items_status = items_status.clone();
@@ -191,6 +204,7 @@ fn app() -> Html {
                         let persisted_state_handle = persisted_state_handle.clone();
                         let persisted_snapshot = (*persisted_state_handle).clone();
                         let drag_state_handle = drag_state_handle.clone();
+                        let undo_state_handle = undo_state_handle.clone();
 
                         spawn_local(async move {
                             match load_list(&id).await {
@@ -230,6 +244,7 @@ fn app() -> Html {
                                     current_match.set(next_match);
                                     loaded_list.set(Some(list));
                                     drag_state_handle.set(None);
+                                    undo_state_handle.set(None);
                                     items_status.set(FetchStatus::Idle);
                                 }
                                 Err(err) => {
@@ -249,6 +264,7 @@ fn app() -> Html {
                         current_match.set(None);
                         list_state_handle.set(None);
                         drag_state_handle.set(None);
+                        undo_state_handle.set(None);
                         items_status.set(FetchStatus::Idle);
                     }
                 };
@@ -286,6 +302,7 @@ fn app() -> Html {
         let persisted_state_handle = persisted_state.clone();
         let card_transition_handle = card_transition.clone();
         let drag_state_handle = drag_state.clone();
+        let undo_state_handle = undo_state.clone();
 
         Callback::from(move |side: WinnerSide| {
             let Some(list_id) = (*selected_list).clone() else {
@@ -307,6 +324,12 @@ fn app() -> Html {
             let Some(mut stored_state) = (*list_state_handle).clone() else {
                 return;
             };
+
+            undo_state_handle.set(Some(UndoEntry {
+                stored_state: stored_state.clone(),
+                ranking: ranking.clone(),
+                matchup: prev_match.clone(),
+            }));
 
             let winner_index;
             let loser_index;
@@ -536,6 +559,35 @@ fn app() -> Html {
         })
     };
 
+    let undo_available = undo_state.is_some();
+    let undo_click = {
+        let undo_state = undo_state.clone();
+        let list_state_handle = list_state.clone();
+        let ranking_state = ranking_state.clone();
+        let current_match = current_match.clone();
+        let persisted_state_handle = persisted_state.clone();
+        let selected_list = selected_list.clone();
+        let drag_state_handle = drag_state.clone();
+        let card_transition_handle = card_transition.clone();
+        Callback::from(move |_| {
+            if let Some(entry) = (*undo_state).clone() {
+                undo_state.set(None);
+                let restored_state = entry.stored_state.clone();
+                list_state_handle.set(Some(restored_state.clone()));
+                ranking_state.set(Some(entry.ranking.clone()));
+                current_match.set(Some(entry.matchup.clone()));
+                drag_state_handle.set(None);
+                card_transition_handle.set(CardTransition::Idle);
+                if let Some(list_id) = (*selected_list).clone() {
+                    let mut updated_app_state = (*persisted_state_handle).clone();
+                    upsert_list_state(&mut updated_app_state, &list_id, restored_state);
+                    persist_state(&updated_app_state);
+                    persisted_state_handle.set(updated_app_state);
+                }
+            }
+        })
+    };
+
     let menu_markup = render_menu(
         *menu_open,
         *lists_expanded,
@@ -584,6 +636,13 @@ fn app() -> Html {
                     <span></span>
                     <span></span>
                     <span></span>
+                </button>
+                <button
+                    class={classes!("undo-button", if undo_available { None } else { Some("disabled") })}
+                    data-swipe-ignore="true"
+                    onclick={undo_click.clone()}
+                    disabled={!undo_available}>
+                    { "↺" }
                 </button>
                 { menu_markup }
                 <main class="content single-column">

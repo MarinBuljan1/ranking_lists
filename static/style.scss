@@ -337,12 +337,19 @@ body {
     gap: 0.6rem;
 
     li {
+      --confidence-fill: 0%;
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 0.6rem 0.75rem;
       border-radius: 10px;
-      background: rgba(0, 0, 0, 0.04);
+      background: linear-gradient(
+          90deg,
+          rgba(0, 0, 0, 0.08) 0%,
+          rgba(0, 0, 0, 0.08) var(--confidence-fill),
+          rgba(0, 0, 0, 0.04) var(--confidence-fill),
+          rgba(0, 0, 0, 0.04) 100%
+        );
     }
   }
 

@@ -668,6 +668,7 @@ fn render_menu(
         (&**ranking_state).as_ref(),
         (&**list_state).as_ref(),
     ) {
+        let total_opponents = list.items.len().saturating_sub(1) as f64;
         let mut items_with_scores: Vec<_> = list
             .items
             .iter()
@@ -675,20 +676,32 @@ fn render_menu(
             .map(|(index, item)| {
                 let rating = ranking.display_rating(index);
                 let matches = state.match_totals.get(index).copied().unwrap_or(0);
-                (item.id.clone(), item.label.clone(), rating, matches)
+                let matches_f = matches as f64;
+                let confidence = if matches >= 1 && total_opponents > 1.0 {
+                    let variance_component = (0.25 / matches_f).sqrt();
+                    let coverage = ((total_opponents - matches_f).max(0.0)
+                        / (total_opponents - 1.0))
+                        .sqrt();
+                    let interval = 1.96 * variance_component * coverage;
+                    (1.0 - interval).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                (item.id.clone(), item.label.clone(), rating, matches, confidence)
             })
             .collect();
 
-        items_with_scores.retain(|(_, _, _, matches)| *matches > 0);
+        items_with_scores.retain(|(_, _, _, matches, _)| *matches > 0);
 
         items_with_scores
             .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
         html! {
             <ul class="menu-ranking-list">
-                { for items_with_scores.into_iter().map(|(id, label, rating, _)| {
+                { for items_with_scores.into_iter().map(|(id, label, rating, _, confidence)| {
+                    let fill_percent = (confidence * 100.0).clamp(0.0, 100.0);
                     html! {
-                        <li key={id}>
+                        <li key={id} style={format!("--confidence-fill: {:.2}%;", fill_percent)}>
                             <span class="item-label">{ label }</span>
                             <span class="item-rating">{ format!("{rating:.0}") }</span>
                         </li>

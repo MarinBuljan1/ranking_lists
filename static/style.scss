@@ -412,21 +412,21 @@ body {
     &.exiting-left {
       --exit-shift: -160vw;
       --rotation-shift: -14deg;
-      animation: swipe-exit 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+      animation: swipe-exit 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     }
 
     &.exiting-right {
       --exit-shift: 160vw;
       --rotation-shift: 14deg;
-      animation: swipe-exit 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+      animation: swipe-exit 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     }
 
     &.entering-from-left {
-      animation: swipe-enter-from-left 1.2s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+      animation: swipe-enter-from-left 0.8s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
     }
 
     &.entering-from-right {
-      animation: swipe-enter-from-right 1.2s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+      animation: swipe-enter-from-right 0.8s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
     }
 
     &::before {

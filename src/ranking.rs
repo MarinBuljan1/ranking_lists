@@ -1,6 +1,7 @@
 const MIN_ABILITY: f64 = 1e-6;
 const DISPLAY_BASE: f64 = 1000.0;
-const DISPLAY_SCALE: f64 = 100.0;
+const DISPLAY_SCALE: f64 = 200.0;
+const PSEUDOCOUNT: f64 = 1.0;
 
 #[derive(Debug, Clone)]
 pub struct BradleyTerry {
@@ -68,21 +69,15 @@ impl BradleyTerry {
         for _ in 0..iterations {
             let mut updated = abilities.clone();
             for i in 0..n {
-                let wins_i: f64 = wins[i].iter().map(|&w| w as f64).sum();
-                if wins_i <= f64::EPSILON {
-                    continue;
-                }
+                let wins_i: f64 = wins[i].iter().map(|&w| w as f64 + PSEUDOCOUNT).sum();
 
                 let mut denom = 0.0;
                 for j in 0..n {
                     if i == j {
                         continue;
                     }
-                    let total = wins[i][j] + wins[j][i];
-                    if total == 0 {
-                        continue;
-                    }
-                    denom += (total as f64) / (abilities[i] + abilities[j] + MIN_ABILITY);
+                    let total = wins[i][j] as f64 + wins[j][i] as f64 + 2.0 * PSEUDOCOUNT;
+                    denom += total / (abilities[i] + abilities[j] + MIN_ABILITY);
                 }
 
                 if denom > 0.0 {

@@ -679,15 +679,20 @@ fn render_menu(
                 let matches_f = matches as f64;
                 let confidence = if matches >= 1 && total_opponents > 1.0 {
                     let variance_component = (0.25 / matches_f).sqrt();
-                    let coverage = ((total_opponents - matches_f).max(0.0)
-                        / (total_opponents - 1.0))
-                        .sqrt();
+                    let coverage =
+                        ((total_opponents - matches_f).max(0.0) / (total_opponents - 1.0)).sqrt();
                     let interval = 1.96 * variance_component * coverage;
                     (1.0 - interval).clamp(0.0, 1.0)
                 } else {
                     0.0
                 };
-                (item.id.clone(), item.label.clone(), rating, matches, confidence)
+                (
+                    item.id.clone(),
+                    item.label.clone(),
+                    rating,
+                    matches,
+                    confidence,
+                )
             })
             .collect();
 

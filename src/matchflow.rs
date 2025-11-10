@@ -46,7 +46,7 @@ pub fn random_matchup(
             let coverage =
                 ((total_opponents - total_matches_f).max(0.0) / (total_opponents - 1.0)).sqrt();
             let interval = 1.96 * variance_component * coverage;
-            (1.0 - interval).clamp(0.0, 1.0)
+            (1.0 - interval).clamp(0.0, 1.0).powf(2.0)
         } else {
             0.0
         };

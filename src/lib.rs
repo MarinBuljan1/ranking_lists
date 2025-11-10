@@ -637,13 +637,21 @@ fn app() -> Html {
                     <span></span>
                     <span></span>
                 </button>
-                <button
-                    class={classes!("undo-button", if undo_available { None } else { Some("disabled") })}
-                    data-swipe-ignore="true"
-                    onclick={undo_click.clone()}
-                    disabled={!undo_available}>
-                    { "↺" }
-                </button>
+                {
+                    if !*menu_open {
+                        html! {
+                            <button
+                                class={classes!("undo-button", if undo_available { None } else { Some("disabled") })}
+                                data-swipe-ignore="true"
+                                onclick={undo_click.clone()}
+                                disabled={!undo_available}>
+                                { "↺" }
+                            </button>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
                 { menu_markup }
                 <main class="content single-column">
                     { matchup_markup }

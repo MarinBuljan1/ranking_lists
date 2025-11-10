@@ -227,15 +227,15 @@ export function run_app() {
 }
 
 function __wbg_adapter_6(arg0, arg1, arg2) {
+    wasm.closure350_externref_shim(arg0, arg1, arg2);
+}
+
+function __wbg_adapter_9(arg0, arg1, arg2) {
     wasm.closure306_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_9(arg0, arg1) {
+function __wbg_adapter_12(arg0, arg1) {
     wasm.wasm_bindgen__convert__closures_____invoke__he19ac54c4b43c734(arg0, arg1);
-}
-
-function __wbg_adapter_12(arg0, arg1, arg2) {
-    wasm.closure350_externref_shim(arg0, arg1, arg2);
 }
 
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
@@ -835,17 +835,17 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_9426018c72824098 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 349, function: Function { arguments: [Externref], shim_idx: 350, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, 349, __wbg_adapter_12);
+        const ret = makeMutClosure(arg0, arg1, 349, __wbg_adapter_6);
         return ret;
     };
     imports.wbg.__wbindgen_cast_c47b38971889f2c5 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 305, function: Function { arguments: [Ref(NamedExternref("Event"))], shim_idx: 306, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, 305, __wbg_adapter_6);
+        const ret = makeMutClosure(arg0, arg1, 305, __wbg_adapter_9);
         return ret;
     };
     imports.wbg.__wbindgen_cast_ca373b0f3f2976fc = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 302, function: Function { arguments: [], shim_idx: 303, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, 302, __wbg_adapter_9);
+        const ret = makeMutClosure(arg0, arg1, 302, __wbg_adapter_12);
         return ret;
     };
     imports.wbg.__wbindgen_init_externref_table = function() {

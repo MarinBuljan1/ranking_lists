@@ -68,11 +68,12 @@ impl BradleyTerry {
         for _ in 0..iterations {
             let mut updated = abilities.clone();
             for i in 0..n {
-                let pseudo = if n > 0 { ((n as f64).sqrt() / n as f64).max(MIN_ABILITY) } else { 0.0 };
-                let wins_i: f64 = wins[i]
-                    .iter()
-                    .map(|&w| w as f64 + pseudo)
-                    .sum();
+                let pseudo = if n > 0 {
+                    (1.0 / n as f64).max(MIN_ABILITY)
+                } else {
+                    0.0
+                };
+                let wins_i: f64 = wins[i].iter().map(|&w| w as f64 + pseudo).sum();
 
                 let mut denom = 0.0;
                 for j in 0..n {
